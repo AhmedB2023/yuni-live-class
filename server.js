@@ -283,6 +283,8 @@ io.on('connection', (socket) => {
       boardSegs: [],
       segSeq: 0,
       boardBy: '',
+      boardById: null,
+      boardByTimer: null,
       participants: new Map(),
       answers: new Map(),
       peers: new Map(),
@@ -397,8 +399,21 @@ io.on('connection', (socket) => {
     } else if (t) {
       segs.push({ id: ++room.segSeq, byId: socket.id, by, role: myRole, text: t });
     }
-    room.boardBy = by;
-    io.to(myRoom).emit('board-segs', { segs: room.boardSegs, by });
+    if (t) {
+      room.boardBy = by;
+      room.boardById = socket.id;
+      if (room.boardByTimer) clearTimeout(room.boardByTimer);
+      room.boardByTimer = setTimeout(() => {
+        room.boardBy = '';
+        room.boardById = null;
+        io.to(myRoom).emit('board-segs', { segs: room.boardSegs, by: '' });
+      }, 3500);
+    } else if (room.boardById === socket.id) {
+      room.boardBy = '';
+      room.boardById = null;
+      if (room.boardByTimer) clearTimeout(room.boardByTimer);
+    }
+    io.to(myRoom).emit('board-segs', { segs: room.boardSegs, by: room.boardBy });
   });
 
   socket.on('answer', ({ name, text }) => {

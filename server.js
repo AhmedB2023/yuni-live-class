@@ -70,6 +70,8 @@ function startAttRound(io, code) {
     if (p.role !== 'student') continue;
     if (p.camOn) {
       room.attResults.set(id, { name: p.name || 'Student', status: 'camera', at: timeNow() });
+      const partSweep = room.participants.get(id);
+      if (partSweep) partSweep.presentCamera += 1;
     } else {
       room.attTargets.add(id);
       io.to(id).emit('att-open', { round: room.attRound, seconds: ATT_ROUND_SECONDS });
@@ -78,6 +80,7 @@ function startAttRound(io, code) {
   if (room.teacherId) {
     io.to(room.teacherId).emit('att-status', { round: room.attRound, list: attList(room) });
   }
+  sendParticipants(room);
   room.attCloseTimer = setTimeout(() => closeAttRound(io, code), ATT_ROUND_SECONDS * 1000);
 }
 
@@ -87,6 +90,18 @@ function makeCode() {
   for (let i = 0; i < 5; i++) code += chars[Math.floor(Math.random() * chars.length)];
   if (rooms.has(code)) return makeCode();
   return code;
+}
+
+function participantsList(room) {
+  return Array.from(room.participants.values()).map((p) => ({
+    name: p.name, role: p.role, joinedAt: p.joinedAt, leftAt: p.leftAt,
+    presentBalloon: p.presentBalloon, presentCamera: p.presentCamera,
+  }));
+}
+
+function sendParticipants(room) {
+  const t = room.peers.get(room.teacherId);
+  if (t) io.to(room.teacherId).emit('participants', participantsList(room));
 }
 
 function roomStateFor(room, role, socketId) {
@@ -106,8 +121,9 @@ function roomStateFor(room, role, socketId) {
   }
   return {
     prompt: room.prompt,
-    board: room.board,
+    boardSegs: room.boardSegs,
     boardBy: room.boardBy,
+    participants: role === 'teacher' ? participantsList(room) : undefined,
     answers: role === 'teacher'
       ? Array.from(room.answers.entries()).map(([id, a]) => ({ id, name: a.name, text: a.text }))
       : [],
@@ -124,8 +140,10 @@ io.on('connection', (socket) => {
     rooms.set(code, {
       teacherId: socket.id,
       prompt: '',
-      board: '',
+      boardSegs: [],
+      segSeq: 0,
       boardBy: '',
+      participants: new Map(),
       answers: new Map(),
       peers: new Map(),
       attOn: false,
@@ -151,6 +169,11 @@ io.on('connection', (socket) => {
     myRole = role === 'teacher' ? 'teacher' : 'student';
     if (myRole === 'teacher') room.teacherId = socket.id;
     room.peers.set(socket.id, { role: myRole, name: name || '', camOn: false });
+    room.participants.set(socket.id, {
+      name: myRole === 'teacher' ? 'Teacher' : (name || 'Student'), role: myRole,
+      joinedAt: Date.now(), leftAt: null, presentBalloon: 0, presentCamera: 0,
+    });
+    sendParticipants(room);
     socket.join(myRoom);
 
     // Tell the new peer who is already here (with names, for the Zoom-style boxes),
@@ -179,15 +202,25 @@ io.on('connection', (socket) => {
     socket.to(myRoom).emit('prompt', room.prompt);
   });
 
-  // One shared whiteboard page, like before — the broadcast carries WHO is writing.
+  // Whiteboard: the page is a list of named pieces. Whoever types, their NAME
+  // goes before their words. Typing more extends your current piece; when
+  // someone else starts, your piece is finished and a new named piece begins.
   socket.on('set-board', (text) => {
     if (!myRoom) return;
     const room = rooms.get(myRoom);
     if (!room) return;
     const peer = room.peers.get(socket.id);
-    room.board = String(text || '').slice(0, 5000);
-    room.boardBy = myRole === 'teacher' ? 'Teacher' : ((peer && peer.name) || 'Student');
-    socket.to(myRoom).emit('board', { text: room.board, by: room.boardBy });
+    const by = myRole === 'teacher' ? 'Teacher' : ((peer && peer.name) || 'Student');
+    const t = String(text || '').slice(0, 2000);
+    const segs = room.boardSegs;
+    const last = segs[segs.length - 1];
+    if (last && last.byId === socket.id) {
+      if (t) last.text = t; else segs.pop();
+    } else if (t) {
+      segs.push({ id: ++room.segSeq, byId: socket.id, by, role: myRole, text: t });
+    }
+    room.boardBy = by;
+    io.to(myRoom).emit('board-segs', { segs: room.boardSegs, by });
   });
 
   socket.on('answer', ({ name, text }) => {
@@ -254,6 +287,8 @@ io.on('connection', (socket) => {
     // Turning the camera ON during an open check = present by camera.
     if (on && room.attOpen && myRole === 'student' && room.attTargets.has(socket.id) && !room.attResults.has(socket.id)) {
       room.attResults.set(socket.id, { name: peer.name || 'Student', status: 'camera', at: timeNow() });
+      const partCam = room.participants.get(socket.id);
+      if (partCam) { partCam.presentCamera += 1; sendParticipants(room); }
       socket.emit('att-done', { round: room.attRound });
       if (room.teacherId) io.to(room.teacherId).emit('att-status', { round: room.attRound, list: attList(room) });
     }
@@ -269,6 +304,8 @@ io.on('connection', (socket) => {
       status: 'ok',
       at: timeNow(),
     });
+    const part = room.participants.get(socket.id);
+    if (part) { part.presentBalloon += 1; sendParticipants(room); }
     socket.emit('att-feedback', { ok: true, round: room.attRound });
     if (room.teacherId) io.to(room.teacherId).emit('att-status', { round: room.attRound, list: attList(room) });
   });
@@ -298,7 +335,10 @@ io.on('connection', (socket) => {
     if (!myRoom) return;
     const room = rooms.get(myRoom);
     if (!room) return;
+    const partLeft = room.participants.get(socket.id);
+    if (partLeft && !partLeft.leftAt) partLeft.leftAt = Date.now();
     room.peers.delete(socket.id);
+    sendParticipants(room);
     room.answers.delete(socket.id);
     room.attTargets.delete(socket.id);
     socket.to(myRoom).emit('peer-left', { id: socket.id });

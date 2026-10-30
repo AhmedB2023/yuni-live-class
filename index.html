@@ -24,12 +24,22 @@
   #screenVideo { width: 100%; border-radius: 16px; background: #000; aspect-ratio: 16/9; object-fit: contain; }
   #promptView { font-size: 30px; font-weight: 700; line-height: 1.35; white-space: pre-wrap; }
   /* The whiteboard is one white Word-style page everyone writes on */
-  .board-shared {
-    background: #ffffff; color: #111827; border: 2px solid #cbd5e1;
-    box-shadow: 0 6px 18px rgba(0,0,0,.4); caret-color: #111827;
-    font-family: Georgia, 'Times New Roman', serif; font-size: 24px; line-height: 1.5; min-height: 200px;
+  /* The whiteboard is a white Word-style page of named pieces */
+  .board-page2 {
+    background: #ffffff; color: #111827; border: 2px solid #cbd5e1; border-radius: 12px;
+    box-shadow: 0 6px 18px rgba(0,0,0,.4); padding: 16px; min-height: 210px;
+    font-family: Georgia, 'Times New Roman', serif;
   }
-  .board-shared::placeholder { color: #9ca3af; }
+  .seg { font-size: 23px; line-height: 1.45; margin-bottom: 12px; white-space: pre-wrap; }
+  .seg .who, .myseg .who { font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; font-weight: 800; font-size: 17px; }
+  .seg .who.teacher, .myseg .who.teacher { color: #1d4ed8; }
+  .seg .who.student, .myseg .who.student { color: #047857; }
+  .myseg { margin-top: 6px; border-top: 2px dashed #cbd5e1; padding-top: 10px; }
+  .myseg textarea {
+    background: #fffbeb; border: 2px dashed #f59e0b; color: #111827; caret-color: #111827;
+    font-family: Georgia, 'Times New Roman', serif; font-size: 23px; line-height: 1.45; min-height: 58px;
+  }
+  .myseg textarea::placeholder { color: #9ca3af; }
   .board-by { font-size: 17px; color: #fbbf24; min-height: 22px; margin-top: 8px; }
   #answerBox { font-size: 26px; min-height: 130px; }
   .answers { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
@@ -120,8 +130,14 @@
       <div id="promptView">…</div>
     </div>
     <div class="card">
-      <div class="label">🤝 Class whiteboard — everyone writes on this page</div>
-      <textarea class="board-shared" id="boardSharedS" rows="8" placeholder="Type here — everyone sees it, with your name"></textarea>
+      <div class="label">🤝 Class whiteboard — your name goes before your words</div>
+      <div class="board-page2">
+        <div id="boardHistoryS"></div>
+        <div class="myseg">
+          <div class="who student" id="boardMineLabelS">You:</div>
+          <textarea id="boardMineS" rows="2" placeholder="Type here — your name goes before your words"></textarea>
+        </div>
+      </div>
       <p class="board-by" id="boardByS"></p>
     </div>
     <div class="card">
@@ -162,8 +178,14 @@
       <textarea id="promptInput" rows="2" placeholder="Example: Write the sentence: I ___ to the store yesterday."></textarea>
     </div>
     <div class="card">
-      <div class="label">🤝 Class whiteboard — everyone writes on this page</div>
-      <textarea class="board-shared" id="boardSharedT" rows="7" placeholder="Write words, examples, corrections — everyone sees it, with your name"></textarea>
+      <div class="label">🤝 Class whiteboard — your name goes before your words</div>
+      <div class="board-page2">
+        <div id="boardHistoryT"></div>
+        <div class="myseg">
+          <div class="who teacher">Teacher (you):</div>
+          <textarea id="boardMineT" rows="2" placeholder="Type here — your name goes before your words"></textarea>
+        </div>
+      </div>
       <p class="board-by" id="boardByT"></p>
     </div>
     <div class="card">
@@ -179,6 +201,11 @@
       <div id="attLive"></div>
       <div id="attLogView"></div>
       <button class="bigbtn gray hidden" id="attSaveBtn" style="margin-top:14px;">💾 Save attendance record</button>
+    </div>
+    <div class="card">
+      <div class="label">👥 Participants in this class</div>
+      <p class="sub" id="participantsView" style="white-space:pre-line;">No students yet.</p>
+      <button class="bigbtn gray hidden" id="partSaveBtn" style="margin-top:10px;">💾 Save participants report</button>
     </div>
     <div class="card">
       <div class="label">Student answers — live</div>
@@ -461,31 +488,54 @@
   // ---------- Board / prompt / answers ----------
   socket.on('prompt', (text) => { if (role !== 'teacher') $('promptView').textContent = text || '…'; });
 
-  // ---- Whiteboard: ONE shared page, typed normally. The name line shows who is writing. ----
-  let lastBoardType = 0;
-  let pendingBoard = null;
-  let pendingTimer = null;
-  function boardEl() { return role === 'teacher' ? $('boardSharedT') : $('boardSharedS'); }
+  // ---- Whiteboard: a page of NAMED pieces. My typing box is fixed on the page
+  // and is NEVER rewritten by anyone's updates — that keeps typing smooth.
+  // When someone else starts typing, my piece is finished and shown above
+  // with my name before it. ----
+  function boardMineEl() { return role === 'teacher' ? $('boardMineT') : $('boardMineS'); }
+  function boardHistoryEl() { return role === 'teacher' ? $('boardHistoryT') : $('boardHistoryS'); }
   function boardByEl() { return role === 'teacher' ? $('boardByT') : $('boardByS'); }
   function showBoardBy(by) {
     if (!by) { boardByEl().textContent = ''; return; }
     boardByEl().textContent = '✍️ ' + by + ' is writing…';
   }
-  function applyRemoteBoard(text) {
-    if (Date.now() - lastBoardType < 1200) {
-      pendingBoard = text;
-      clearTimeout(pendingTimer);
-      pendingTimer = setTimeout(() => {
-        if (pendingBoard !== null) { boardEl().value = pendingBoard; pendingBoard = null; }
-      }, 1300);
-      return;
-    }
-    boardEl().value = text;
+  let lastSegSig = '';
+  function renderSegHistory(segs) {
+    const sig = segs.map((s) => s.id + ':' + s.text).join('|');
+    if (sig === lastSegSig) return;
+    lastSegSig = sig;
+    const hist = boardHistoryEl();
+    hist.innerHTML = '';
+    segs.forEach((s) => {
+      const div = document.createElement('div');
+      div.className = 'seg';
+      const who = document.createElement('span');
+      who.className = 'who ' + (s.role === 'teacher' ? 'teacher' : 'student');
+      who.textContent = s.by + ': ';
+      div.appendChild(who);
+      div.appendChild(document.createTextNode(s.text));
+      hist.appendChild(div);
+    });
   }
-  socket.on('board', ({ text, by }) => { showBoardBy(by); applyRemoteBoard(text || ''); });
-  const sendBoardShared = throttle(() => {
-    lastBoardType = Date.now();
-    socket.emit('set-board', boardEl().value);
+  function handleSegs(segs, by) {
+    showBoardBy(by);
+    const list = segs || [];
+    const tail = list[list.length - 1];
+    const myTail = tail && tail.byId === socket.id ? tail : null;
+    renderSegHistory(myTail ? list.slice(0, -1) : list);
+    if (!myTail) {
+      const ta = boardMineEl();
+      const mine = list.filter((s) => s.byId === socket.id);
+      const myLast = mine[mine.length - 1];
+      if (myLast && ta) {
+        if (ta.value === myLast.text) ta.value = '';
+        else if (ta.value.startsWith(myLast.text)) ta.value = ta.value.slice(myLast.text.length);
+      }
+    }
+  }
+  socket.on('board-segs', ({ segs, by }) => handleSegs(segs, by));
+  const sendBoardMine = throttle(() => {
+    socket.emit('set-board', boardMineEl().value);
   }, 300);
   socket.on('room-state', (state) => {
     if (role !== 'teacher') {
@@ -493,8 +543,8 @@
     } else {
       state.answers.forEach((a) => renderAnswer(a.id, a.name, a.text));
     }
-    boardEl().value = state.board || '';
-    showBoardBy(state.boardBy);
+    handleSegs(state.boardSegs || [], state.boardBy);
+    if (state.participants) setParticipants(state.participants);
     if (state.att) restoreAtt(state.att);
   });
 
@@ -549,6 +599,7 @@
         ensureTile('me', 'Teacher');
       } else {
         show('studentView');
+        $('boardMineLabelS').textContent = (myName || 'You') + ' (you):';
         ensureTile('me', myName || 'You');
         const myBalloon = tileLayers('me').balloon;
         myBalloon.addEventListener('click', () => {
@@ -780,6 +831,43 @@
     URL.revokeObjectURL(a.href);
   });
 
+  // ---------- Participants (teacher): live list + downloadable report ----------
+  let participantsNow = [];
+  function fmtTime(ts) {
+    return ts ? new Date(ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
+  }
+  function setParticipants(list) {
+    participantsNow = list || [];
+    if (role !== 'teacher') return;
+    const students = participantsNow.filter((p) => p.role === 'student');
+    $('participantsView').textContent = students.length === 0
+      ? 'No students yet.'
+      : students.map((p, i) => (i + 1) + '. ' + p.name + ' — joined ' + fmtTime(p.joinedAt) + (p.leftAt ? ' — left ' + fmtTime(p.leftAt) : ' — in class now')).join('\n');
+    $('partSaveBtn').classList.toggle('hidden', participantsNow.length === 0);
+  }
+  socket.on('participants', (list) => setParticipants(list));
+  $('partSaveBtn').addEventListener('click', () => {
+    const students = participantsNow.filter((p) => p.role === 'student');
+    const lines = [
+      'Class participants — ' + new Date().toLocaleDateString('en-US'),
+      'Class code: ' + roomCode,
+      'Teacher: Teacher',
+      '',
+      'Students (' + students.length + '):',
+    ];
+    students.forEach((p, i) => {
+      lines.push((i + 1) + '. ' + p.name
+        + ' — joined ' + fmtTime(p.joinedAt)
+        + (p.leftAt ? ' — left ' + fmtTime(p.leftAt) : ' — still in class')
+        + ' — Present: balloon x' + p.presentBalloon + ', camera x' + p.presentCamera);
+    });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/plain' }));
+    a.download = 'class-participants.txt';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
   socket.on('att-state', ({ on }) => {
     attOn = on;
     paintAttBtn();
@@ -845,8 +933,8 @@
 
   const sendPrompt = throttle(() => socket.emit('set-prompt', $('promptInput').value), 300);
   $('promptInput').addEventListener('input', sendPrompt);
-  $('boardSharedT').addEventListener('input', sendBoardShared);
-  $('boardSharedS').addEventListener('input', sendBoardShared);
+  $('boardMineT').addEventListener('input', sendBoardMine);
+  $('boardMineS').addEventListener('input', sendBoardMine);
 
   $('clearBtn').addEventListener('click', () => {
     socket.emit('clear-answers');

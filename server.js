@@ -20,11 +20,10 @@ app.get('/', (req, res) => {
 });
 
 // room code -> { teacherId, prompt, board, answers: Map<socketId, {name, text, ts}> , peers: Map<socketId, {role, name}>,
-//                attOn, attTimer, attCloseTimer, attRound, attWord, attCustomWord, attOpen,
-//                attResults: Map<socketId, {name, status, at}>, attLog: [{round, at, word, results}] }
+//                attOn, attTimer, attCloseTimer, attRound, attOpen,
+//                attResults: Map<socketId, {name, status, at}>, attLog: [{round, at, results}] }
 const rooms = new Map();
 
-const ATT_WORDS = ['apple', 'house', 'water', 'book', 'sun', 'cat', 'tree', 'bread', 'school', 'friend', 'happy', 'family', 'coffee', 'garden', 'river', 'market'];
 const ATT_ROUND_SECONDS = 60;
 const ATT_EVERY_MS = 5 * 60 * 1000;
 
@@ -50,7 +49,7 @@ function closeAttRound(io, code) {
   if (!room || !room.attOpen) return;
   room.attOpen = false;
   if (room.attCloseTimer) { clearTimeout(room.attCloseTimer); room.attCloseTimer = null; }
-  const entry = { round: room.attRound, at: timeNow(), word: room.attWord, results: attList(room) };
+  const entry = { round: room.attRound, at: timeNow(), results: attList(room) };
   room.attLog.push(entry);
   if (room.teacherId) io.to(room.teacherId).emit('att-closed', entry);
   io.to(code).emit('att-done', { round: room.attRound });
@@ -61,16 +60,10 @@ function startAttRound(io, code) {
   if (!room || !room.attOn) return;
   closeAttRound(io, code);
   room.attRound += 1;
-  let word = room.attCustomWord;
-  if (!word) {
-    do { word = ATT_WORDS[Math.floor(Math.random() * ATT_WORDS.length)]; } while (word === room.attWord && ATT_WORDS.length > 1);
-  }
-  room.attWord = word;
   room.attResults = new Map();
   room.attOpen = true;
   io.to(code).emit('att-open', { round: room.attRound, seconds: ATT_ROUND_SECONDS });
   if (room.teacherId) {
-    io.to(room.teacherId).emit('att-word', { round: room.attRound, word });
     io.to(room.teacherId).emit('att-status', { round: room.attRound, list: attList(room) });
   }
   room.attCloseTimer = setTimeout(() => closeAttRound(io, code), ATT_ROUND_SECONDS * 1000);
@@ -98,7 +91,6 @@ function roomStateFor(room, role, socketId) {
   if (role === 'teacher') {
     att.list = room.attOpen ? attList(room) : [];
     att.log = room.attLog;
-    att.word = room.attOpen ? room.attWord : '';
   }
   return {
     prompt: room.prompt,
@@ -126,8 +118,6 @@ io.on('connection', (socket) => {
       attTimer: null,
       attCloseTimer: null,
       attRound: 0,
-      attWord: '',
-      attCustomWord: '',
       attOpen: false,
       attResults: new Map(),
       attLog: [],
@@ -188,7 +178,7 @@ io.on('connection', (socket) => {
     io.to(myRoom).emit('answers-cleared');
   });
 
-  // ---- Attendance check: every 5 minutes students type the word the teacher says ----
+  // ---- Attendance check: every 5 minutes a pink balloon pops up; students tap it ----
   socket.on('att-toggle', ({ on }) => {
     if (!myRoom || myRole !== 'teacher') return;
     const room = rooms.get(myRoom);
@@ -208,25 +198,17 @@ io.on('connection', (socket) => {
     io.to(room.teacherId).emit('att-state', { on: room.attOn });
   });
 
-  socket.on('att-set-word', ({ word }) => {
-    if (!myRoom || myRole !== 'teacher') return;
-    const room = rooms.get(myRoom);
-    if (!room) return;
-    room.attCustomWord = String(word || '').trim().toLowerCase().replace(/[^a-z']/gi, '').slice(0, 30);
-  });
-
-  socket.on('att-answer', ({ word }) => {
+  socket.on('att-pop', () => {
     if (!myRoom || myRole !== 'student') return;
     const room = rooms.get(myRoom);
     if (!room || !room.attOpen) return;
-    const ok = String(word || '').trim().toLowerCase() === room.attWord;
     const peer = room.peers.get(socket.id);
     room.attResults.set(socket.id, {
       name: (peer && peer.name) || 'Student',
-      status: ok ? 'ok' : 'wrong',
+      status: 'ok',
       at: timeNow(),
     });
-    socket.emit('att-feedback', { ok, round: room.attRound });
+    socket.emit('att-feedback', { ok: true, round: room.attRound });
     if (room.teacherId) io.to(room.teacherId).emit('att-status', { round: room.attRound, list: attList(room) });
   });
 

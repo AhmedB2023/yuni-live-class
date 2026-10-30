@@ -49,6 +49,22 @@
   .tile .n { position: absolute; bottom: 6px; left: 6px; font-size: 13px; font-weight: 700; background: rgba(0,0,0,.65); padding: 2px 8px; border-radius: 6px; }
   .att-row { font-size: 21px; padding: 6px 0; border-bottom: 1px solid #334155; }
   .att-round { font-size: 16px; color: #94a3b8; margin-top: 12px; }
+  /* The pink attendance balloon */
+  .balloon {
+    width: 130px; height: 160px; border-radius: 50% 50% 50% 50% / 55% 55% 45% 45%;
+    background: radial-gradient(circle at 35% 30%, #fda4af, #ec4899 65%, #db2777);
+    box-shadow: inset -10px -12px 24px rgba(0,0,0,.15);
+    position: relative; cursor: pointer; transform-origin: bottom center;
+    animation: rise 1.1s ease-out, sway 2.4s ease-in-out 1.1s infinite;
+  }
+  .balloon::after {
+    content: ''; position: absolute; bottom: -15px; left: 50%; transform: translateX(-50%);
+    border: 7px solid transparent; border-top: 11px solid #db2777;
+  }
+  @keyframes rise { from { transform: translateY(200px); } to { transform: translateY(0); } }
+  @keyframes sway { 0%, 100% { transform: rotate(-2.5deg); } 50% { transform: rotate(2.5deg); } }
+  .balloon.popped { animation: pop .25s forwards; pointer-events: none; }
+  @keyframes pop { to { transform: scale(1.7); opacity: 0; } }
   .row { display: flex; gap: 12px; flex-wrap: wrap; }
   .row .bigbtn { flex: 1; min-width: 220px; }
   #joinName { font-size: 26px; padding: 20px; }
@@ -81,11 +97,12 @@
 
   <!-- ============ STUDENT: CLASS ============ -->
   <section id="studentView" class="hidden">
-    <div class="card hidden" id="attCard" style="border:3px solid #fbbf24;">
+    <div class="card hidden" id="attCard" style="border:3px solid #fbbf24; text-align:center;">
       <div class="label">🔔 Attendance check!</div>
-      <p style="font-size:22px; margin-bottom:10px;">Type the word your teacher says out loud:</p>
-      <input type="text" id="attInput" placeholder="Type the word here" autocomplete="off">
-      <button class="bigbtn green" id="attSendBtn">✅ I'M HERE</button>
+      <p style="font-size:24px; margin-bottom:6px;">Tap the pink balloon! 🎈</p>
+      <div style="min-height:215px; display:flex; align-items:flex-start; justify-content:center; overflow:hidden; padding-top:15px;">
+        <div id="balloon" class="balloon"></div>
+      </div>
       <p class="status" id="attFeedback"></p>
     </div>
     <div class="faces" id="facesStudent"></div>
@@ -145,14 +162,8 @@
     </div>
     <div class="card">
       <div class="label">✅ Attendance check — every 5 minutes</div>
-      <p class="sub">When ON: every 5 minutes, each student must type the word you say out loud. Green ✅ = present. The first check starts right away.</p>
+      <p class="sub">When ON: every 5 minutes a pink balloon 🎈 pops up on each student's phone. They tap it = present ✅. No tapping in 1 minute = not marked. The first check starts right away.</p>
       <button class="bigbtn green" id="attBtn">Start attendance checks</button>
-      <div id="attWordBox" class="hidden" style="margin-top:10px;">
-        <div class="label">Say this word out loud now</div>
-        <div id="attWord" style="font-size:44px; font-weight:800; letter-spacing:.04em;"></div>
-      </div>
-      <div class="label" style="margin-top:12px;">Your own word for the checks (or leave empty — the app picks one)</div>
-      <input type="text" id="attCustomWord" placeholder="Example: banana" autocomplete="off">
       <div id="attLive"></div>
       <div id="attLogView"></div>
       <button class="bigbtn gray hidden" id="attSaveBtn" style="margin-top:14px;">💾 Save attendance record</button>
@@ -603,8 +614,7 @@
 
   function attRowText(r) {
     if (r.status === 'ok') return '✅ ' + r.name + ' — present (' + r.at + ')';
-    if (r.status === 'wrong') return '❌ ' + r.name + ' — wrong word (' + r.at + ')';
-    return '⏳ ' + r.name + ' — waiting…';
+    return '⏳ ' + r.name + ' — no tap yet…';
   }
   function attRowsInto(box, list) {
     list.forEach((r) => {
@@ -629,7 +639,7 @@
     attLogLocal.forEach((e) => {
       const t = document.createElement('div');
       t.className = 'att-round';
-      t.textContent = 'Check #' + e.round + ' — ' + e.at + ' — word: ' + e.word;
+      t.textContent = 'Check #' + e.round + ' — ' + e.at + ' — 🎈 pink balloon';
       box.appendChild(t);
       attRowsInto(box, e.results);
     });
@@ -644,18 +654,15 @@
     attOn = !attOn;
     paintAttBtn();
     socket.emit('att-toggle', { on: attOn });
-    if (!attOn) { $('attWordBox').classList.add('hidden'); $('attLive').innerHTML = ''; }
-  });
-  $('attCustomWord').addEventListener('change', () => {
-    socket.emit('att-set-word', { word: $('attCustomWord').value });
+    if (!attOn) { $('attLive').innerHTML = ''; }
   });
   $('attSaveBtn').addEventListener('click', () => {
     const lines = ['Attendance record — ' + new Date().toLocaleDateString('en-US')];
     attLogLocal.forEach((e) => {
       lines.push('');
-      lines.push('Check #' + e.round + ' — ' + e.at + ' — word: ' + e.word);
+      lines.push('Check #' + e.round + ' — ' + e.at + ' — pink balloon');
       e.results.forEach((r) => {
-        lines.push('  ' + (r.status === 'ok' ? 'PRESENT' : r.status === 'wrong' ? 'WRONG WORD' : 'NO ANSWER') + ' — ' + r.name + (r.at ? ' (' + r.at + ')' : ''));
+        lines.push('  ' + (r.status === 'ok' ? 'PRESENT' : 'NO ANSWER') + ' — ' + r.name + (r.at ? ' (' + r.at + ')' : ''));
       });
     });
     const a = document.createElement('a');
@@ -668,11 +675,7 @@
   socket.on('att-state', ({ on }) => {
     attOn = on;
     paintAttBtn();
-    if (!on) { $('attWordBox').classList.add('hidden'); $('attLive').innerHTML = ''; }
-  });
-  socket.on('att-word', ({ word }) => {
-    $('attWord').textContent = (word || '').toUpperCase();
-    $('attWordBox').classList.remove('hidden');
+    if (!on) { $('attLive').innerHTML = ''; }
   });
   socket.on('att-status', ({ round, list }) => renderAttLive(round, list));
   socket.on('att-closed', (entry) => {
@@ -681,31 +684,31 @@
     $('attLive').innerHTML = '';
   });
 
-  // Student side of the check
+  // Student side of the check: a pink balloon pops up; tap it = present.
+  function resetBalloon() {
+    const b = $('balloon');
+    b.classList.remove('popped');
+    b.style.animation = 'none';
+    void b.offsetWidth; // restart the rise animation
+    b.style.animation = '';
+  }
   socket.on('att-open', () => {
     if (role === 'teacher') return;
     myAttOk = false;
-    $('attInput').value = '';
-    $('attInput').disabled = false;
-    $('attSendBtn').disabled = false;
+    resetBalloon();
     $('attFeedback').textContent = '';
     $('attCard').classList.remove('hidden');
-    $('attInput').focus();
   });
-  $('attSendBtn').addEventListener('click', () => {
-    socket.emit('att-answer', { word: $('attInput').value });
-  });
-  $('attInput').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') socket.emit('att-answer', { word: $('attInput').value });
+  $('balloon').addEventListener('click', () => {
+    if (myAttOk) return;
+    $('balloon').classList.add('popped');
+    socket.emit('att-pop');
   });
   socket.on('att-feedback', ({ ok }) => {
     if (ok) {
       myAttOk = true;
+      $('balloon').classList.add('popped');
       $('attFeedback').textContent = '✅ You are marked present. Thank you!';
-      $('attInput').disabled = true;
-      $('attSendBtn').disabled = true;
-    } else {
-      $('attFeedback').textContent = '❌ That is not the word. Listen to your teacher and try again.';
     }
   });
   socket.on('att-done', () => {
@@ -721,17 +724,12 @@
       attLogLocal = att.log || [];
       renderAttLog();
       if (att.open && att.list && att.list.length) renderAttLive(att.round, att.list);
-      if (att.open && att.word) {
-        $('attWord').textContent = att.word.toUpperCase();
-        $('attWordBox').classList.remove('hidden');
-      }
     } else if (att.open) {
       $('attCard').classList.remove('hidden');
       if (att.answered === 'ok') {
         myAttOk = true;
+        $('balloon').classList.add('popped');
         $('attFeedback').textContent = '✅ You are marked present. Thank you!';
-        $('attInput').disabled = true;
-        $('attSendBtn').disabled = true;
       }
     }
   }

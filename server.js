@@ -13,7 +13,7 @@ const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, { pingInterval: 10000, pingTimeout: 8000 });
 
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
@@ -326,7 +326,7 @@ io.on('connection', (socket) => {
     if (typeof cb === 'function') cb({ code: roomName });
   });
 
-  socket.on('join-room', async ({ code, role, name, pin }, cb) => {
+  socket.on('join-room', async ({ code, role, name, pin, cid }, cb) => {
     const codeUp = (code || '').toUpperCase().trim();
     let room = rooms.get(codeUp);
     if (!room) {
@@ -348,10 +348,30 @@ io.on('connection', (socket) => {
     myRoom = codeUp;
     myRole = role === 'teacher' ? 'teacher' : 'student';
     if (myRole === 'teacher') room.teacherId = socket.id;
-    room.peers.set(socket.id, { role: myRole, name: name || '', camOn: false });
+    room.peers.set(socket.id, { role: myRole, name: name || '', camOn: false, cid: cid || '' });
     room.participants.set(socket.id, {
       name: myRole === 'teacher' ? 'Teacher' : (name || 'Student'), role: myRole,
       joinedAt: Date.now(), leftAt: null, presentBalloon: 0, presentCamera: 0,
+    });
+    // One person, one copy: a new connection replaces the same person's
+    // older one, so the class never shows anyone twice. Two cases: the same
+    // browser coming back (same cid — a refresh, a dropped connection that
+    // rejoined), and the teacher seat (one room, one teacher, whichever
+    // device she enters from). The new peer is already in the maps, so the
+    // room survives the old connection closing.
+    const replaceOld = (pid) => {
+      const old = io.sockets.sockets.get(pid);
+      const partOld = room.participants.get(pid);
+      if (partOld && !partOld.leftAt) partOld.leftAt = Date.now();
+      room.peers.delete(pid);
+      room.answers.delete(pid);
+      socket.to(myRoom).emit('peer-left', { id: pid });
+      if (old) { old.emit('replaced'); old.disconnect(true); }
+    };
+    room.peers.forEach((p, pid) => {
+      if (pid === socket.id) return;
+      if (cid && p.cid && p.cid === cid) replaceOld(pid);
+      else if (myRole === 'teacher' && p.role === 'teacher') replaceOld(pid);
     });
     sendParticipants(room);
     socket.join(myRoom);
@@ -414,6 +434,15 @@ io.on('connection', (socket) => {
       if (room.boardByTimer) clearTimeout(room.boardByTimer);
     }
     io.to(myRoom).emit('board-segs', { segs: room.boardSegs, by: room.boardBy });
+  });
+
+  // The teacher may mute a student's microphone (never unmute — the
+  // student turns it back on herself when she wants to speak).
+  socket.on('mute-student', ({ to }) => {
+    if (!myRoom || myRole !== 'teacher') return;
+    const room = rooms.get(myRoom);
+    if (!room || !to || !room.peers.has(to)) return;
+    io.to(to).emit('muted-by-teacher');
   });
 
   socket.on('answer', ({ name, text }) => {

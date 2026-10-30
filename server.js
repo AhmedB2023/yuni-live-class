@@ -25,7 +25,6 @@ app.get('/', (req, res) => {
 const rooms = new Map();
 
 const ATT_ROUND_SECONDS = 60;
-const ATT_EVERY_MS = 5 * 60 * 1000;
 
 function timeNow() {
   return new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
@@ -33,13 +32,16 @@ function timeNow() {
 
 function attList(room) {
   const list = [];
-  const seen = new Set();
-  for (const [id, r] of room.attResults.entries()) {
+  for (const [, r] of room.attResults.entries()) {
     list.push({ name: r.name, status: r.status, at: r.at });
-    seen.add(id);
   }
-  for (const [id, p] of room.peers.entries()) {
-    if (p.role === 'student' && !seen.has(id)) list.push({ name: p.name || 'Student', status: 'waiting', at: '' });
+  if (room.attOpen) {
+    for (const id of room.attTargets) {
+      if (!room.attResults.has(id)) {
+        const p = room.peers.get(id);
+        list.push({ name: (p && p.name) || 'Student', status: 'waiting', at: '' });
+      }
+    }
   }
   return list;
 }
@@ -47,9 +49,9 @@ function attList(room) {
 function closeAttRound(io, code) {
   const room = rooms.get(code);
   if (!room || !room.attOpen) return;
+  const entry = { round: room.attRound, at: timeNow(), results: attList(room) };
   room.attOpen = false;
   if (room.attCloseTimer) { clearTimeout(room.attCloseTimer); room.attCloseTimer = null; }
-  const entry = { round: room.attRound, at: timeNow(), results: attList(room) };
   room.attLog.push(entry);
   if (room.teacherId) io.to(room.teacherId).emit('att-closed', entry);
   io.to(code).emit('att-done', { round: room.attRound });
@@ -61,8 +63,18 @@ function startAttRound(io, code) {
   closeAttRound(io, code);
   room.attRound += 1;
   room.attResults = new Map();
+  room.attTargets = new Set();
   room.attOpen = true;
-  io.to(code).emit('att-open', { round: room.attRound, seconds: ATT_ROUND_SECONDS });
+  // Camera ON = she can see them = present. Camera OFF = they get the balloon.
+  for (const [id, p] of room.peers.entries()) {
+    if (p.role !== 'student') continue;
+    if (p.camOn) {
+      room.attResults.set(id, { name: p.name || 'Student', status: 'camera', at: timeNow() });
+    } else {
+      room.attTargets.add(id);
+      io.to(id).emit('att-open', { round: room.attRound, seconds: ATT_ROUND_SECONDS });
+    }
+  }
   if (room.teacherId) {
     io.to(room.teacherId).emit('att-status', { round: room.attRound, list: attList(room) });
   }
@@ -80,7 +92,7 @@ function makeCode() {
 function roomStateFor(room, role, socketId) {
   const att = {
     on: room.attOn,
-    open: room.attOpen,
+    open: room.attOpen && (role === 'teacher' || room.attTargets.has(socketId)),
     round: room.attRound,
     answered: null,
     list: [],
@@ -119,6 +131,8 @@ io.on('connection', (socket) => {
       attCloseTimer: null,
       attRound: 0,
       attOpen: false,
+      attTargets: new Set(),
+      attEveryMs: 5 * 60 * 1000,
       attResults: new Map(),
       attLog: [],
     });
@@ -134,14 +148,24 @@ io.on('connection', (socket) => {
     myRoom = (code || '').toUpperCase().trim();
     myRole = role === 'teacher' ? 'teacher' : 'student';
     if (myRole === 'teacher') room.teacherId = socket.id;
-    room.peers.set(socket.id, { role: myRole, name: name || '' });
+    room.peers.set(socket.id, { role: myRole, name: name || '', camOn: false });
     socket.join(myRoom);
 
-    // Tell the new peer who is already here, and tell the others about the new peer.
-    const others = Array.from(room.peers.keys()).filter((id) => id !== socket.id);
+    // Tell the new peer who is already here (with names, for the Zoom-style boxes),
+    // and tell the others about the new peer.
+    const others = Array.from(room.peers.entries())
+      .filter(([id]) => id !== socket.id)
+      .map(([id, p]) => ({ id, role: p.role, name: p.name }));
     socket.emit('existing-peers', others);
     socket.to(myRoom).emit('peer-joined', { id: socket.id, role: myRole, name: name || '' });
     socket.emit('room-state', roomStateFor(room, myRole, socket.id));
+
+    // A student who joins while a balloon check is open gets the balloon too.
+    if (room.attOpen && myRole === 'student') {
+      room.attTargets.add(socket.id);
+      socket.emit('att-open', { round: room.attRound, seconds: ATT_ROUND_SECONDS });
+      if (room.teacherId) io.to(room.teacherId).emit('att-status', { round: room.attRound, list: attList(room) });
+    }
     if (typeof cb === 'function') cb({ ok: true });
   });
 
@@ -179,23 +203,40 @@ io.on('connection', (socket) => {
   });
 
   // ---- Attendance check: every 5 minutes a pink balloon pops up; students tap it ----
-  socket.on('att-toggle', ({ on }) => {
+  socket.on('att-toggle', ({ on, minutes }) => {
     if (!myRoom || myRole !== 'teacher') return;
     const room = rooms.get(myRoom);
     if (!room) return;
     if (on && !room.attOn) {
+      const mins = Math.min(60, Math.max(1, parseInt(minutes, 10) || 5));
+      room.attEveryMs = mins * 60 * 1000;
       room.attOn = true;
       startAttRound(io, myRoom);
       room.attTimer = setInterval(() => {
         if (!rooms.has(myRoom)) return;
         startAttRound(io, myRoom);
-      }, ATT_EVERY_MS);
+      }, room.attEveryMs);
     } else if (!on && room.attOn) {
       room.attOn = false;
       if (room.attTimer) { clearInterval(room.attTimer); room.attTimer = null; }
       closeAttRound(io, myRoom);
     }
     io.to(room.teacherId).emit('att-state', { on: room.attOn });
+  });
+
+  socket.on('cam-state', ({ on }) => {
+    if (!myRoom) return;
+    const room = rooms.get(myRoom);
+    if (!room) return;
+    const peer = room.peers.get(socket.id);
+    if (!peer) return;
+    peer.camOn = !!on;
+    // Turning the camera ON during an open check = present by camera.
+    if (on && room.attOpen && myRole === 'student' && room.attTargets.has(socket.id) && !room.attResults.has(socket.id)) {
+      room.attResults.set(socket.id, { name: peer.name || 'Student', status: 'camera', at: timeNow() });
+      socket.emit('att-done', { round: room.attRound });
+      if (room.teacherId) io.to(room.teacherId).emit('att-status', { round: room.attRound, list: attList(room) });
+    }
   });
 
   socket.on('att-pop', () => {
@@ -239,6 +280,7 @@ io.on('connection', (socket) => {
     if (!room) return;
     room.peers.delete(socket.id);
     room.answers.delete(socket.id);
+    room.attTargets.delete(socket.id);
     socket.to(myRoom).emit('peer-left', { id: socket.id });
     if (room.teacherId) io.to(room.teacherId).emit('answer-removed', { id: socket.id });
     if (room.peers.size === 0) {

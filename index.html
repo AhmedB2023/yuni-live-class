@@ -24,6 +24,13 @@
   #screenVideo { width: 100%; border-radius: 16px; background: #000; aspect-ratio: 16/9; object-fit: contain; }
   #promptView { font-size: 30px; font-weight: 700; line-height: 1.35; white-space: pre-wrap; }
   #boardView { font-size: 24px; line-height: 1.5; white-space: pre-wrap; min-height: 60px; }
+  /* Shared whiteboard = a white Word page: white paper, black letters */
+  #boardInput, #boardView {
+    background: #ffffff; color: #111827; border: 2px solid #cbd5e1;
+    box-shadow: 0 6px 18px rgba(0,0,0,.4); caret-color: #111827;
+    font-family: Georgia, 'Times New Roman', serif;
+  }
+  #boardInput::placeholder, #boardView::placeholder { color: #9ca3af; }
   #answerBox { font-size: 26px; min-height: 130px; }
   .answers { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
   .answer-card { background: #0b3b2e; border: 1px solid #14532d; border-radius: 14px; padding: 14px; }
@@ -79,7 +86,7 @@
     </div>
     <div class="card">
       <div class="label">🤝 Class whiteboard — you and your teacher type here together</div>
-      <textarea id="boardView" rows="5" placeholder="Type here — your teacher sees it, and you see her typing"></textarea>
+      <textarea id="boardView" rows="8" placeholder="Type here — your teacher sees it, and you see her typing"></textarea>
     </div>
     <div class="card">
       <div class="label">✍️ Write your answer here</div>
@@ -115,7 +122,7 @@
     </div>
     <div class="card">
       <div class="label">🤝 Class whiteboard — you and your students type here together</div>
-      <textarea id="boardInput" rows="4" placeholder="Write words, examples, corrections — students can type here too…"></textarea>
+      <textarea id="boardInput" rows="7" placeholder="Write words, examples, corrections — students can type here too…"></textarea>
     </div>
     <div class="card">
       <div class="label">Student answers — live</div>

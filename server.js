@@ -389,13 +389,35 @@ io.on('connection', (socket) => {
       io.to(room.teacherId).emit('chat', { thread: socket.id, msg });
       socket.emit('chat', { thread: socket.id, msg: { ...msg, mine: true } });
     } else {
+      // Teacher addressing: "@Maria text" goes only to Maria; "@everyone text" goes to all students.
+      const deliver = (target, body, viaAt) => {
+        const msg = { from: socket.id, name: 'Teacher', text: body, at: timeNow(), mine: false };
+        if (!room.chats.has(target)) room.chats.set(target, []);
+        room.chats.get(target).push(msg);
+        io.to(target).emit('chat', { thread: target, msg });
+        socket.emit('chat', { thread: target, msg: { ...msg, mine: true }, viaAt: !!viaAt });
+      };
+      const at = clean.match(/^@(\S+)\s+([\s\S]+)$/);
+      if (at) {
+        const who = at[1].toLowerCase();
+        const body = at[2];
+        if (who === 'everyone') {
+          room.peers.forEach((p, id) => { if (p.role === 'student') deliver(id, body, true); });
+          return;
+        }
+        let hit = null;
+        room.peers.forEach((p, id) => {
+          if (hit || p.role !== 'student') return;
+          const nm = (p.name || '').toLowerCase();
+          if (nm === who || nm.split(' ')[0] === who) hit = id;
+        });
+        if (!hit) { socket.emit('chat-note', { text: 'No student named "' + at[1] + '" in this class.' }); return; }
+        deliver(hit, body, true);
+        return;
+      }
       const target = String(to || '');
       if (!room.peers.has(target) || target === socket.id) return;
-      const msg = { from: socket.id, name: 'Teacher', text: clean, at: timeNow(), mine: false };
-      if (!room.chats.has(target)) room.chats.set(target, []);
-      room.chats.get(target).push(msg);
-      io.to(target).emit('chat', { thread: target, msg });
-      socket.emit('chat', { thread: target, msg: { ...msg, mine: true } });
+      deliver(target, clean, false);
     }
   });
 

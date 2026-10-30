@@ -1,0 +1,1 @@
+{"dependencies":{"express":"^4.19.2","socket.io":"^4.7.5"},"description":"One-link live ESL class: teacher screen share + voice + a shared board where every student types live. Test version for Yuni's class.","engines":{"node":">=18"},"main":"server.js","name":"yuni-live-class","private":true,"scripts":{"start":"node server.js"},"version":"0.1.0"}

@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Class</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; background: #0f172a; color: #f8fafc; min-height: 100vh; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 30px; margin: 10px 0 4px; }
+  .sub { color: #94a3b8; font-size: 17px; margin-bottom: 18px; }
+  .bigbtn { display: block; width: 100%; padding: 22px; font-size: 24px; font-weight: 700; border: none; border-radius: 16px; cursor: pointer; margin: 12px 0; }
+  .green { background: #22c55e; color: #052e16; }
+  .blue { background: #38bdf8; color: #082f49; }
+  .gray { background: #334155; color: #e2e8f0; }
+  .red { background: #ef4444; color: #fff; }
+  .bigbtn:disabled { opacity: .45; cursor: default; }
+  input[type=text], textarea { width: 100%; border-radius: 12px; border: 2px solid #475569; background: #1e293b; color: #f8fafc; padding: 16px; font-size: 22px; }
+  textarea { resize: vertical; }
+  .hidden { display: none !important; }
+  .card { background: #1e293b; border: 1px solid #334155; border-radius: 16px; padding: 16px; margin: 12px 0; }
+  .label { font-size: 15px; letter-spacing: .08em; text-transform: uppercase; color: #94a3b8; margin-bottom: 8px; }
+  #screenVideo { width: 100%; border-radius: 16px; background: #000; aspect-ratio: 16/9; object-fit: contain; }
+  #promptView { font-size: 30px; font-weight: 700; line-height: 1.35; white-space: pre-wrap; }
+  #boardView { font-size: 24px; line-height: 1.5; white-space: pre-wrap; min-height: 60px; }
+  #answerBox { font-size: 26px; min-height: 130px; }
+  .answers { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .answer-card { background: #0b3b2e; border: 1px solid #14532d; border-radius: 14px; padding: 14px; }
+  .answer-card .who { font-weight: 700; color: #86efac; font-size: 17px; margin-bottom: 6px; }
+  .answer-card .what { font-size: 22px; white-space: pre-wrap; line-height: 1.4; }
+  .answer-card.empty { background: #1e293b; border-color: #334155; }
+  .answer-card.empty .what { color: #64748b; }
+  .linkbox { display: flex; gap: 10px; }
+  .linkbox input { flex: 1; font-size: 18px; }
+  .linkbox button { padding: 0 22px; font-size: 19px; font-weight: 700; border: none; border-radius: 12px; background: #38bdf8; color: #082f49; cursor: pointer; }
+  .status { font-size: 17px; color: #fbbf24; min-height: 24px; margin: 8px 0; }
+  .mic-on { outline: 4px solid #22c55e; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .row .bigbtn { flex: 1; min-width: 220px; }
+  #joinName { font-size: 26px; padding: 20px; }
+  #codeInput { font-size: 30px; text-align: center; letter-spacing: .3em; text-transform: uppercase; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============ HOME ============ -->
+  <section id="homeView">
+    <h1>Live Class</h1>
+    <p class="sub">One link is the whole classroom. No accounts, no settings for students.</p>
+    <button class="bigbtn green" id="teacherBtn">👩‍🏫 I am the teacher — start a class</button>
+    <div class="card">
+      <div class="label">I am a student — type the class code</div>
+      <input type="text" id="codeInput" maxlength="5" placeholder="ABCDE" autocomplete="off">
+      <button class="bigbtn blue" id="studentBtn">Join class</button>
+    </div>
+    <p class="sub">Students: your teacher will send you a link. Tap the link — that is all.</p>
+  </section>
+
+  <!-- ============ STUDENT: NAME ============ -->
+  <section id="nameView" class="hidden">
+    <h1>Welcome 👋</h1>
+    <p class="sub">Write your name, then tap the big green button.</p>
+    <input type="text" id="joinName" placeholder="Your name" autocomplete="name">
+    <button class="bigbtn green" id="enterBtn">Enter class ✅</button>
+  </section>
+
+  <!-- ============ STUDENT: CLASS ============ -->
+  <section id="studentView" class="hidden">
+    <div class="card">
+      <div class="label">Teacher's screen</div>
+      <video id="screenVideo" autoplay playsinline></video>
+      <p class="status" id="screenStatus">Waiting for the teacher to share her screen…</p>
+    </div>
+    <div class="card">
+      <div class="label">Your teacher says</div>
+      <div id="promptView">…</div>
+    </div>
+    <div class="card">
+      <div class="label">Class board</div>
+      <div id="boardView"></div>
+    </div>
+    <div class="card">
+      <div class="label">✍️ Write your answer here</div>
+      <textarea id="answerBox" placeholder="Type here… your teacher sees it right away"></textarea>
+    </div>
+    <button class="bigbtn gray" id="micBtn">🎤 Tap to speak</button>
+    <p class="status" id="studentStatus"></p>
+  </section>
+
+  <!-- ============ TEACHER ============ -->
+  <section id="teacherView" class="hidden">
+    <h1>Your class is live 🎉</h1>
+    <div class="card">
+      <div class="label">Send this link to your students</div>
+      <div class="linkbox">
+        <input type="text" id="studentLink" readonly>
+        <button id="copyBtn">Copy</button>
+      </div>
+      <p class="sub" style="margin-top:8px;">Class code: <b id="roomCodeLabel"></b> — students tap the link, write their name, and they are in.</p>
+    </div>
+    <div class="row">
+      <button class="bigbtn blue" id="shareBtn">🖥️ 1. Share my screen</button>
+      <button class="bigbtn gray" id="teacherMicBtn">🎤 2. Turn my microphone on</button>
+    </div>
+    <p class="status" id="teacherStatus"></p>
+    <div class="card">
+      <div class="label">My screen (only you see this preview)</div>
+      <video id="teacherPreview" autoplay playsinline muted style="width:100%;border-radius:12px;background:#000;"></video>
+    </div>
+    <div class="card">
+      <div class="label">Say or ask (students see this big)</div>
+      <textarea id="promptInput" rows="2" placeholder="Example: Write the sentence: I ___ to the store yesterday."></textarea>
+    </div>
+    <div class="card">
+      <div class="label">Class board — write here, everyone sees it</div>
+      <textarea id="boardInput" rows="4" placeholder="Write words, examples, corrections…"></textarea>
+    </div>
+    <div class="card">
+      <div class="label">Student answers — live</div>
+      <div class="answers" id="answersGrid">
+        <div class="answer-card empty"><div class="what">No answers yet. When a student types, it appears here right away.</div></div>
+      </div>
+      <button class="bigbtn red" id="clearBtn" style="margin-top:14px;">Clear all answers</button>
+    </div>
+  </section>
+
+</div>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const params = new URLSearchParams(location.search);
+  let role = params.get('role');
+  let roomCode = (params.get('room') || '').toUpperCase();
+  let myName = localStorage.getItem('ylc-name') || '';
+
+  const socket = io();
+  const peers = new Map(); // socketId -> { pc, makingOffer, ignoreOffer, polite }
+  let localStream = null;  // combined mic (+ screen for teacher)
+  let screenStream = null;
+  let micStream = null;
+  let joined = false;
+
+  const RTC_CFG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
+  function show(id) {
+    ['homeView', 'nameView', 'studentView', 'teacherView'].forEach((v) => $(v).classList.add('hidden'));
+    $(id).classList.remove('hidden');
+  }
+
+  function rebuildLocalStream() {
+    const tracks = [];
+    if (screenStream) tracks.push(...screenStream.getVideoTracks());
+    if (micStream) tracks.push(...micStream.getAudioTracks());
+    localStream = new MediaStream(tracks);
+    // Push the new track set into every existing connection.
+    peers.forEach(({ pc }) => {
+      const senders = pc.getSenders();
+      const kinds = ['video', 'audio'];
+      kinds.forEach((kind) => {
+        const track = localStream.getTracks().find((t) => t.kind === kind) || null;
+        const sender = senders.find((s) => s.track && s.track.kind === kind);
+        if (sender && track) sender.replaceTrack(track);
+        else if (sender && !track) sender.replaceTrack(null);
+        else if (!sender && track) pc.addTrack(track, localStream);
+      });
+    });
+  }
+
+  function makePeer(peerId) {
+    if (peers.has(peerId)) return peers.get(peerId);
+    const pc = new RTCPeerConnection(RTC_CFG);
+    const state = { pc, makingOffer: false, ignoreOffer: false, polite: socket.id > peerId };
+    peers.set(peerId, state);
+
+    if (localStream) localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
+
+    pc.onicecandidate = ({ candidate }) => {
+      if (candidate) socket.emit('rtc-ice', { to: peerId, candidate });
+    };
+    pc.onnegotiationneeded = async () => {
+      try {
+        state.makingOffer = true;
+        await pc.setLocalDescription();
+        socket.emit('rtc-offer', { to: peerId, sdp: pc.localDescription });
+      } catch (e) { /* ignore */ } finally { state.makingOffer = false; }
+    };
+    pc.ontrack = ({ streams }) => {
+      const stream = streams[0];
+      if (role === 'teacher') {
+        // Student voice: play it through a small audio element.
+        let el = document.getElementById('audio-' + peerId);
+        if (!el) {
+          el = document.createElement('audio');
+          el.id = 'audio-' + peerId;
+          el.autoplay = true;
+          document.body.appendChild(el);
+        }
+        el.srcObject = stream;
+      } else {
+        // Student side: any incoming video is the teacher's screen.
+        if (stream.getVideoTracks().length > 0) {
+          $('screenVideo').srcObject = stream;
+          $('screenStatus').textContent = 'You are watching your teacher\'s screen.';
+        } else {
+          let el = document.getElementById('audio-' + peerId);
+          if (!el) {
+            el = document.createElement('audio');
+            el.id = 'audio-' + peerId;
+            el.autoplay = true;
+            document.body.appendChild(el);
+          }
+          el.srcObject = stream;
+        }
+      }
+    };
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+        peers.delete(peerId);
+      }
+    };
+    return state;
+  }
+
+  socket.on('existing-peers', (ids) => ids.forEach((id) => makePeer(id)));
+  socket.on('peer-joined', ({ id }) => makePeer(id));
+  socket.on('peer-left', ({ id }) => {
+    const p = peers.get(id);
+    if (p) { try { p.pc.close(); } catch (e) {} peers.delete(id); }
+    const el = document.getElementById('audio-' + id);
+    if (el) el.remove();
+  });
+
+  socket.on('rtc-offer', async ({ from, sdp }) => {
+    const state = makePeer(from);
+    const pc = state.pc;
+    const collision = state.makingOffer || pc.signalingState !== 'stable';
+    state.ignoreOffer = !state.polite && collision;
+    if (state.ignoreOffer) return;
+    try {
+      await pc.setRemoteDescription(sdp);
+      await pc.setLocalDescription();
+      socket.emit('rtc-answer', { to: from, sdp: pc.localDescription });
+    } catch (e) { /* ignore */ }
+  });
+  socket.on('rtc-answer', async ({ from, sdp }) => {
+    const state = peers.get(from);
+    if (!state) return;
+    try { await state.pc.setRemoteDescription(sdp); } catch (e) { /* ignore */ }
+  });
+  socket.on('rtc-ice', async ({ from, candidate }) => {
+    const state = peers.get(from);
+    if (!state) return;
+    try { await state.pc.addIceCandidate(candidate); } catch (e) { if (!state.ignoreOffer) { /* ignore */ } }
+  });
+
+  // ---------- Board / prompt / answers ----------
+  socket.on('prompt', (text) => { if (role !== 'teacher') $('promptView').textContent = text || '…'; });
+  socket.on('board', (text) => { if (role !== 'teacher') $('boardView').textContent = text || ''; });
+  socket.on('room-state', (state) => {
+    if (role !== 'teacher') {
+      $('promptView').textContent = state.prompt || '…';
+      $('boardView').textContent = state.board || '';
+    } else {
+      state.answers.forEach((a) => renderAnswer(a.id, a.name, a.text));
+    }
+  });
+
+  const answerCards = new Map();
+  function renderAnswer(id, name, text) {
+    const grid = $('answersGrid');
+    const placeholder = grid.querySelector('.answer-card.empty');
+    if (placeholder) placeholder.remove();
+    if (!answerCards.has(id)) {
+      const card = document.createElement('div');
+      card.className = 'answer-card';
+      card.innerHTML = '<div class="who"></div><div class="what"></div>';
+      grid.appendChild(card);
+      answerCards.set(id, card);
+    }
+    const card = answerCards.get(id);
+    card.querySelector('.who').textContent = name;
+    card.querySelector('.what').textContent = text;
+  }
+  socket.on('answer-update', ({ id, name, text }) => renderAnswer(id, name, text));
+  socket.on('answer-removed', ({ id }) => {
+    const card = answerCards.get(id);
+    if (card) { card.remove(); answerCards.delete(id); }
+  });
+  socket.on('answers-cleared', () => {
+    if (role === 'teacher') return;
+  });
+
+  function throttle(fn, ms) {
+    let t = null, last = 0;
+    return (...args) => {
+      const now = Date.now();
+      const run = () => { last = Date.now(); fn(...args); };
+      if (now - last >= ms) run();
+      else { clearTimeout(t); t = setTimeout(run, ms - (now - last)); }
+    };
+  }
+
+  // ---------- Joining ----------
+  function joinRoom() {
+    socket.emit('join-room', { code: roomCode, role, name: myName }, (res) => {
+      if (res && res.error) {
+        alert(res.error);
+        location.href = location.pathname;
+        return;
+      }
+      joined = true;
+      if (role === 'teacher') {
+        show('teacherView');
+        $('roomCodeLabel').textContent = roomCode;
+        $('studentLink').value = location.origin + location.pathname + '?room=' + roomCode;
+      } else {
+        show('studentView');
+      }
+    });
+  }
+
+  socket.on('connect', () => { if (roomCode && role && (role === 'teacher' || myName)) joinRoom(); });
+
+  // ---------- Home ----------
+  $('teacherBtn').addEventListener('click', () => {
+    socket.emit('create-room', ({ code }) => {
+      location.href = location.pathname + '?room=' + code + '&role=teacher';
+    });
+  });
+  $('studentBtn').addEventListener('click', () => {
+    const code = $('codeInput').value.toUpperCase().trim();
+    if (code.length < 4) { alert('Type the class code from your teacher.'); return; }
+    location.href = location.pathname + '?room=' + code;
+  });
+
+  // ---------- Student flow ----------
+  if (roomCode && role !== 'teacher') {
+    role = 'student';
+    if (myName) {
+      // joinRoom fires on socket connect.
+    } else {
+      show('nameView');
+      $('enterBtn').addEventListener('click', () => {
+        myName = $('joinName').value.trim();
+        if (!myName) { alert('Please write your name.'); return; }
+        localStorage.setItem('ylc-name', myName);
+        if (socket.connected) joinRoom(); else location.reload();
+      });
+    }
+  }
+
+  const sendAnswer = throttle(() => {
+    socket.emit('answer', { name: myName, text: $('answerBox').value });
+  }, 300);
+  $('answerBox').addEventListener('input', sendAnswer);
+
+  $('micBtn').addEventListener('click', async () => {
+    if (micStream) {
+      micStream.getTracks().forEach((t) => t.stop());
+      micStream = null;
+      rebuildLocalStream();
+      $('micBtn').textContent = '🎤 Tap to speak';
+      $('micBtn').classList.remove('mic-on');
+      return;
+    }
+    try {
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      rebuildLocalStream();
+      $('micBtn').textContent = '🔴 You are speaking — tap to stop';
+      $('micBtn').classList.add('mic-on');
+    } catch (e) {
+      $('studentStatus').textContent = 'The microphone is blocked. Allow the microphone in your browser, then tap again.';
+    }
+  });
+
+  // ---------- Teacher flow ----------
+  if (role === 'teacher' && roomCode) {
+    // joinRoom fires on socket connect.
+  }
+
+  $('copyBtn').addEventListener('click', () => {
+    $('studentLink').select();
+    navigator.clipboard && navigator.clipboard.writeText($('studentLink').value);
+    $('copyBtn').textContent = 'Copied ✅';
+    setTimeout(() => { $('copyBtn').textContent = 'Copy'; }, 2000);
+  });
+
+  $('shareBtn').addEventListener('click', async () => {
+    if (screenStream) {
+      screenStream.getTracks().forEach((t) => t.stop());
+      screenStream = null;
+      rebuildLocalStream();
+      $('teacherPreview').srcObject = null;
+      $('shareBtn').textContent = '🖥️ 1. Share my screen';
+      $('teacherStatus').textContent = 'Screen sharing stopped.';
+      return;
+    }
+    try {
+      screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      screenStream.getVideoTracks()[0].addEventListener('ended', () => {
+        screenStream = null;
+        rebuildLocalStream();
+        $('shareBtn').textContent = '🖥️ 1. Share my screen';
+      });
+      $('teacherPreview').srcObject = screenStream;
+      rebuildLocalStream();
+      $('shareBtn').textContent = '🛑 Stop sharing my screen';
+      $('teacherStatus').textContent = 'Your screen is live. Students see it now.';
+    } catch (e) {
+      $('teacherStatus').textContent = 'Screen sharing was cancelled or blocked. Tap the button and choose a window.';
+    }
+  });
+
+  $('teacherMicBtn').addEventListener('click', async () => {
+    if (micStream) {
+      micStream.getTracks().forEach((t) => t.stop());
+      micStream = null;
+      rebuildLocalStream();
+      $('teacherMicBtn').textContent = '🎤 2. Turn my microphone on';
+      $('teacherMicBtn').classList.remove('mic-on');
+      return;
+    }
+    try {
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      rebuildLocalStream();
+      $('teacherMicBtn').textContent = '🔴 Microphone is ON — tap to mute';
+      $('teacherMicBtn').classList.add('mic-on');
+    } catch (e) {
+      $('teacherStatus').textContent = 'The microphone is blocked. Allow it in your browser, then tap again.';
+    }
+  });
+
+  const sendPrompt = throttle(() => socket.emit('set-prompt', $('promptInput').value), 300);
+  $('promptInput').addEventListener('input', sendPrompt);
+  const sendBoard = throttle(() => socket.emit('set-board', $('boardInput').value), 300);
+  $('boardInput').addEventListener('input', sendBoard);
+
+  $('clearBtn').addEventListener('click', () => {
+    socket.emit('clear-answers');
+    answerCards.forEach((card) => card.remove());
+    answerCards.clear();
+    $('answersGrid').innerHTML = '<div class="answer-card empty"><div class="what">No answers yet. When a student types, it appears here right away.</div></div>';
+  });
+})();
+</script>
+</body>
+</html>

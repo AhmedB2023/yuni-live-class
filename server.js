@@ -19,6 +19,23 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+// Feature requests from teachers (typed in their own words in the class).
+// In memory: they clear when the service sleeps/restarts — fine for the test.
+const featureRequests = [];
+const REQUESTS_KEY = process.env.REQUESTS_KEY || 'ylc-builder-2026';
+function escHtml(x) {
+  return String(x).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+app.get('/requests', (req, res) => {
+  if (req.query.key !== REQUESTS_KEY) { res.status(403).send('Wrong key.'); return; }
+  const items = featureRequests.slice().reverse().map((r) =>
+    '<li style="margin:10px 0;"><b>' + escHtml(r.at) + '</b> — room <b>' + escHtml(r.room) + '</b><br>' + escHtml(r.text) + '</li>').join('');
+  res.send('<html><head><meta charset="utf-8"><title>Feature requests</title></head><body style="font-family:sans-serif;max-width:700px;margin:30px auto;padding:0 16px;">'
+    + '<h2>✨ Feature requests from teachers (' + featureRequests.length + ')</h2>'
+    + (items ? '<ul>' + items + '</ul>' : '<p>No requests yet.</p>')
+    + '</body></html>');
+});
+
 // room code -> { teacherId, prompt, board, answers: Map<socketId, {name, text, ts}> , peers: Map<socketId, {role, name}>,
 //                attOn, attTimer, attCloseTimer, attRound, attOpen,
 //                attResults: Map<socketId, {name, status, at}>, attLog: [{round, at, results}] }
@@ -150,6 +167,7 @@ function roomStateFor(room, role, socketId) {
     chat: role === 'teacher'
       ? Object.fromEntries(room.chats.entries())
       : (room.chats.get(socketId) || []),
+    requests: role === 'teacher' ? room.requests : undefined,
     participants: role === 'teacher' ? participantsList(room) : undefined,
     answers: role === 'teacher'
       ? Array.from(room.answers.entries()).map(([id, a]) => ({ id, name: a.name, text: a.text }))
@@ -185,6 +203,7 @@ io.on('connection', (socket) => {
       lang: 'en',
       drawStrokes: [],
       chats: new Map(),
+      requests: [],
       groups: null,
       groupOf: new Map(),
     });
@@ -378,6 +397,19 @@ io.on('connection', (socket) => {
       io.to(target).emit('chat', { thread: target, msg });
       socket.emit('chat', { thread: target, msg: { ...msg, mine: true } });
     }
+  });
+
+  // ---- Feature request: the teacher types what she wants; it lands on the builder list ----
+  socket.on('feature-request', ({ text }) => {
+    if (!myRoom || myRole !== 'teacher') return;
+    const room = rooms.get(myRoom);
+    if (!room) return;
+    const clean = String(text || '').trim().slice(0, 500);
+    if (!clean) return;
+    const entry = { at: timeNow(), room: myRoom, text: clean };
+    room.requests.push(entry);
+    featureRequests.push(entry);
+    socket.emit('feature-request-ack', { ok: true });
   });
 
   // ---- Platform language: the teacher sets it for the whole class ----

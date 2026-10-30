@@ -23,14 +23,22 @@
   .label { font-size: 15px; letter-spacing: .08em; text-transform: uppercase; color: #94a3b8; margin-bottom: 8px; }
   #screenVideo { width: 100%; border-radius: 16px; background: #000; aspect-ratio: 16/9; object-fit: contain; }
   #promptView { font-size: 30px; font-weight: 700; line-height: 1.35; white-space: pre-wrap; }
-  #boardView { font-size: 24px; line-height: 1.5; white-space: pre-wrap; min-height: 60px; }
-  /* Shared whiteboard = a white Word page: white paper, black letters */
-  #boardInput, #boardView {
-    background: #ffffff; color: #111827; border: 2px solid #cbd5e1;
-    box-shadow: 0 6px 18px rgba(0,0,0,.4); caret-color: #111827;
+  /* The whiteboard is a white page of NAMED lines — each person owns only their line */
+  .board-page {
+    background: #ffffff; color: #111827; border: 2px solid #cbd5e1; border-radius: 12px;
+    box-shadow: 0 6px 18px rgba(0,0,0,.4); padding: 16px; min-height: 230px;
     font-family: Georgia, 'Times New Roman', serif;
   }
-  #boardInput::placeholder, #boardView::placeholder { color: #9ca3af; }
+  .bline { margin-bottom: 16px; }
+  .bline .who { font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; font-weight: 800; font-size: 16px; margin-bottom: 4px; }
+  .bline .who.teacher { color: #1d4ed8; }
+  .bline .who.student { color: #047857; }
+  .bline .txt { font-size: 23px; line-height: 1.45; white-space: pre-wrap; min-height: 30px; }
+  .bline textarea {
+    background: #fffbeb; border: 2px dashed #f59e0b; color: #111827; caret-color: #111827;
+    font-family: Georgia, 'Times New Roman', serif; font-size: 23px; line-height: 1.45; min-height: 64px;
+  }
+  .bline textarea::placeholder { color: #9ca3af; }
   #answerBox { font-size: 26px; min-height: 130px; }
   .answers { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
   .answer-card { background: #0b3b2e; border: 1px solid #14532d; border-radius: 14px; padding: 14px; }
@@ -120,8 +128,9 @@
       <div id="promptView">…</div>
     </div>
     <div class="card">
-      <div class="label">🤝 Class whiteboard — you and your teacher type here together</div>
-      <textarea id="boardView" rows="8" placeholder="Type here — your teacher sees it, and you see her typing"></textarea>
+      <div class="label">🤝 Class whiteboard — every name has its own lines</div>
+      <div class="board-page" id="boardPageS"></div>
+      <p class="sub" style="margin-top:8px;">The yellow box is yours — you can only change your own words.</p>
     </div>
     <div class="card">
       <div class="label">✍️ Write your answer here</div>
@@ -161,8 +170,9 @@
       <textarea id="promptInput" rows="2" placeholder="Example: Write the sentence: I ___ to the store yesterday."></textarea>
     </div>
     <div class="card">
-      <div class="label">🤝 Class whiteboard — you and your students type here together</div>
-      <textarea id="boardInput" rows="7" placeholder="Write words, examples, corrections — students can type here too…"></textarea>
+      <div class="label">🤝 Class whiteboard — every name has its own lines</div>
+      <div class="board-page" id="boardPageT"></div>
+      <p class="sub" style="margin-top:8px;">The yellow box is yours — you can only change your own words. Same for every student.</p>
     </div>
     <div class="card">
       <div class="label">✅ Attendance check — the pink balloon</div>
@@ -459,34 +469,76 @@
   // ---------- Board / prompt / answers ----------
   socket.on('prompt', (text) => { if (role !== 'teacher') $('promptView').textContent = text || '…'; });
 
-  // ---- Shared whiteboard: teacher AND students type on the same board ----
-  let lastBoardType = 0;
-  let pendingBoard = null;
-  let pendingTimer = null;
-  function boardEl() { return role === 'teacher' ? $('boardInput') : $('boardView'); }
-  function applyRemoteBoard(text) {
-    if (Date.now() - lastBoardType < 1200) {
-      pendingBoard = text;
-      clearTimeout(pendingTimer);
-      pendingTimer = setTimeout(() => {
-        if (pendingBoard !== null) { boardEl().value = pendingBoard; pendingBoard = null; }
-      }, 1300);
-      return;
-    }
-    boardEl().value = text;
-  }
-  socket.on('board', (text) => applyRemoteBoard(text || ''));
-  const sendBoardShared = throttle(() => {
-    lastBoardType = Date.now();
-    socket.emit('set-board', boardEl().value);
+  // ---- Whiteboard: a white page of NAMED lines. Each person owns only their own line. ----
+  const boardBlocks = new Map(); // line id ('me' for my own) -> { block, content }
+  function boardPage() { return role === 'teacher' ? $('boardPageT') : $('boardPageS'); }
+  function myBoardLabel() { return role === 'teacher' ? 'Teacher' : (myName || 'You'); }
+
+  const sendMyLine = throttle(() => {
+    const rec = boardBlocks.get('me');
+    if (rec) socket.emit('set-board', rec.content.value);
   }, 300);
+
+  function makeBoardBlock(id, name, isTeacher, mine) {
+    const wrap = document.createElement('div');
+    wrap.className = 'bline';
+    const who = document.createElement('div');
+    who.className = 'who ' + (isTeacher ? 'teacher' : 'student');
+    who.textContent = name + (mine ? ' (you)' : '') + ':';
+    wrap.appendChild(who);
+    let content;
+    if (mine) {
+      content = document.createElement('textarea');
+      content.rows = 2;
+      content.placeholder = 'Type here — only you can change this…';
+      content.addEventListener('input', sendMyLine);
+    } else {
+      content = document.createElement('div');
+      content.className = 'txt';
+    }
+    wrap.appendChild(content);
+    boardPage().appendChild(wrap);
+    const rec = { block: wrap, content };
+    boardBlocks.set(id, rec);
+    return rec;
+  }
+
+  function renderBoard(lines) {
+    const page = boardPage();
+    if (!page) return;
+    const me = boardBlocks.get('me') || makeBoardBlock('me', myBoardLabel(), role === 'teacher', true);
+    const sorted = [...lines].sort((a, b) => (a.role === 'teacher' ? 0 : 1) - (b.role === 'teacher' ? 0 : 1));
+    const order = sorted.map((l) => (l.id === socket.id ? 'me' : l.id));
+    if (!order.includes('me')) {
+      if (role === 'teacher') order.unshift('me');
+      else if (order.length && lines.find((l) => l.role === 'teacher')) order.splice(1, 0, 'me');
+      else order.push('me');
+    }
+    const keep = new Set(order);
+    boardBlocks.forEach((rec, id) => {
+      if (!keep.has(id)) { rec.block.remove(); boardBlocks.delete(id); }
+    });
+    sorted.forEach((line) => {
+      if (line.id === socket.id) {
+        if (document.activeElement !== me.content && me.content.value !== line.text) me.content.value = line.text;
+      } else {
+        const rec = boardBlocks.get(line.id) || makeBoardBlock(line.id, line.name, line.role === 'teacher', false);
+        rec.content.textContent = line.text;
+      }
+    });
+    order.forEach((id) => {
+      const rec = boardBlocks.get(id);
+      if (rec) page.appendChild(rec.block);
+    });
+  }
+  socket.on('board-lines', (lines) => renderBoard(lines || []));
   socket.on('room-state', (state) => {
     if (role !== 'teacher') {
       $('promptView').textContent = state.prompt || '…';
     } else {
       state.answers.forEach((a) => renderAnswer(a.id, a.name, a.text));
     }
-    boardEl().value = state.board || '';
+    renderBoard(state.boardLines || []);
     if (state.att) restoreAtt(state.att);
   });
 
@@ -534,6 +586,7 @@
         return;
       }
       joined = true;
+      renderBoard([]);
       if (role === 'teacher') {
         show('teacherView');
         $('roomCodeLabel').textContent = roomCode;
@@ -837,8 +890,6 @@
 
   const sendPrompt = throttle(() => socket.emit('set-prompt', $('promptInput').value), 300);
   $('promptInput').addEventListener('input', sendPrompt);
-  $('boardInput').addEventListener('input', sendBoardShared);
-  $('boardView').addEventListener('input', sendBoardShared);
 
   $('clearBtn').addEventListener('click', () => {
     socket.emit('clear-answers');

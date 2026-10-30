@@ -89,6 +89,10 @@ function makeCode() {
   return code;
 }
 
+function boardLinesList(room) {
+  return Array.from(room.boardLines.entries()).map(([id, v]) => ({ id, name: v.name, role: v.role, text: v.text }));
+}
+
 function roomStateFor(room, role, socketId) {
   const att = {
     on: room.attOn,
@@ -106,7 +110,7 @@ function roomStateFor(room, role, socketId) {
   }
   return {
     prompt: room.prompt,
-    board: room.board,
+    boardLines: boardLinesList(room),
     answers: role === 'teacher'
       ? Array.from(room.answers.entries()).map(([id, a]) => ({ id, name: a.name, text: a.text }))
       : [],
@@ -123,7 +127,7 @@ io.on('connection', (socket) => {
     rooms.set(code, {
       teacherId: socket.id,
       prompt: '',
-      board: '',
+      boardLines: new Map(),
       answers: new Map(),
       peers: new Map(),
       attOn: false,
@@ -177,12 +181,19 @@ io.on('connection', (socket) => {
     socket.to(myRoom).emit('prompt', room.prompt);
   });
 
+  // The whiteboard is a page of NAMED lines: each person owns only their own line.
   socket.on('set-board', (text) => {
     if (!myRoom) return;
     const room = rooms.get(myRoom);
     if (!room) return;
-    room.board = String(text || '').slice(0, 5000);
-    socket.to(myRoom).emit('board', room.board);
+    const peer = room.peers.get(socket.id);
+    const name = (peer && peer.name) || (myRole === 'teacher' ? 'Teacher' : 'Student');
+    room.boardLines.set(socket.id, {
+      name: myRole === 'teacher' ? 'Teacher' : name,
+      role: myRole,
+      text: String(text || '').slice(0, 2000),
+    });
+    io.to(myRoom).emit('board-lines', boardLinesList(room));
   });
 
   socket.on('answer', ({ name, text }) => {
@@ -296,6 +307,7 @@ io.on('connection', (socket) => {
     room.peers.delete(socket.id);
     room.answers.delete(socket.id);
     room.attTargets.delete(socket.id);
+    if (room.boardLines.delete(socket.id)) io.to(myRoom).emit('board-lines', boardLinesList(room));
     socket.to(myRoom).emit('peer-left', { id: socket.id });
     if (room.teacherId) io.to(room.teacherId).emit('answer-removed', { id: socket.id });
     if (room.peers.size === 0) {

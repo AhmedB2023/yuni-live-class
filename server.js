@@ -85,7 +85,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('set-board', (text) => {
-    if (!myRoom || myRole !== 'teacher') return;
+    if (!myRoom) return;
     const room = rooms.get(myRoom);
     if (!room) return;
     room.board = String(text || '').slice(0, 5000);

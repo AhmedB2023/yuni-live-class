@@ -168,8 +168,12 @@
     <div class="card">
       <div class="label">✅ Attendance check — the pink balloon</div>
       <p class="sub">Students with their <b>camera ON</b> are marked present by their camera. Students with <b>camera OFF</b> get a pink balloon 🎈 on their phone — one tap = present. No tap in 1 minute = not marked.</p>
-      <div class="label">Balloon check every … minutes</div>
-      <input type="number" id="attMinutes" value="5" min="1" max="60" style="width:110px;">
+      <div class="label">Balloon check every — tap one</div>
+      <div class="row" id="attMinutesRow">
+        <button class="bigbtn green att-min" data-min="5">5 min</button>
+        <button class="bigbtn gray att-min" data-min="10">10 min</button>
+        <button class="bigbtn gray att-min" data-min="15">15 min</button>
+      </div>
       <button class="bigbtn green" id="attBtn">Start attendance checks</button>
       <div id="attLive"></div>
       <div id="attLogView"></div>
@@ -691,10 +695,20 @@
     $('attBtn').className = 'bigbtn ' + (attOn ? 'red' : 'green');
   }
 
+  let attMinutesChosen = 5;
+  document.querySelectorAll('.att-min').forEach((b) => {
+    b.addEventListener('click', () => {
+      attMinutesChosen = parseInt(b.dataset.min, 10);
+      document.querySelectorAll('.att-min').forEach((x) => {
+        x.className = 'bigbtn att-min ' + (parseInt(x.dataset.min, 10) === attMinutesChosen ? 'green' : 'gray');
+      });
+      socket.emit('att-set-minutes', { minutes: attMinutesChosen });
+    });
+  });
   $('attBtn').addEventListener('click', () => {
     attOn = !attOn;
     paintAttBtn();
-    socket.emit('att-toggle', { on: attOn, minutes: parseInt($('attMinutes').value, 10) || 5 });
+    socket.emit('att-toggle', { on: attOn, minutes: attMinutesChosen });
     if (!attOn) { $('attLive').innerHTML = ''; }
   });
   $('attSaveBtn').addEventListener('click', () => {

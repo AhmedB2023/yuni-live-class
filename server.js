@@ -208,7 +208,7 @@ io.on('connection', (socket) => {
     const room = rooms.get(myRoom);
     if (!room) return;
     if (on && !room.attOn) {
-      const mins = Math.min(60, Math.max(1, parseInt(minutes, 10) || 5));
+      const mins = [5, 10, 15].includes(parseInt(minutes, 10)) ? parseInt(minutes, 10) : 5;
       room.attEveryMs = mins * 60 * 1000;
       room.attOn = true;
       startAttRound(io, myRoom);
@@ -222,6 +222,21 @@ io.on('connection', (socket) => {
       closeAttRound(io, myRoom);
     }
     io.to(room.teacherId).emit('att-state', { on: room.attOn });
+  });
+
+  socket.on('att-set-minutes', ({ minutes }) => {
+    if (!myRoom || myRole !== 'teacher') return;
+    const room = rooms.get(myRoom);
+    if (!room) return;
+    const mins = [5, 10, 15].includes(parseInt(minutes, 10)) ? parseInt(minutes, 10) : 5;
+    room.attEveryMs = mins * 60 * 1000;
+    if (room.attOn && room.attTimer) {
+      clearInterval(room.attTimer);
+      room.attTimer = setInterval(() => {
+        if (!rooms.has(myRoom)) return;
+        startAttRound(io, myRoom);
+      }, room.attEveryMs);
+    }
   });
 
   socket.on('cam-state', ({ on }) => {

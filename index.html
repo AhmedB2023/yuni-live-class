@@ -51,6 +51,13 @@
     display: flex; align-items: center; justify-content: center;
     font-size: 52px; font-weight: 800; color: #e2e8f0;
   }
+  .tile .plate.present { background: #14532d; }
+  .tile .balloon-layer {
+    width: 100%; aspect-ratio: 4/3; border-radius: 12px; background: #1e293b;
+    display: flex; align-items: center; justify-content: center; overflow: hidden;
+  }
+  .balloon.small { width: 82px; height: 102px; animation: bob 1.6s ease-in-out infinite; }
+  @keyframes bob { 0%, 100% { transform: translateY(4px); } 50% { transform: translateY(-4px); } }
   .tile .n { position: absolute; bottom: 6px; left: 6px; font-size: 13px; font-weight: 700; background: rgba(0,0,0,.65); padding: 2px 8px; border-radius: 6px; }
   .att-row { font-size: 21px; padding: 6px 0; border-bottom: 1px solid #334155; }
   .att-round { font-size: 16px; color: #94a3b8; margin-top: 12px; }
@@ -102,14 +109,6 @@
 
   <!-- ============ STUDENT: CLASS ============ -->
   <section id="studentView" class="hidden">
-    <div class="card hidden" id="attCard" style="border:3px solid #fbbf24; text-align:center;">
-      <div class="label">🔔 Attendance check!</div>
-      <p style="font-size:24px; margin-bottom:6px;">Tap the pink balloon! 🎈</p>
-      <div style="min-height:215px; display:flex; align-items:flex-start; justify-content:center; overflow:hidden; padding-top:15px;">
-        <div id="balloon" class="balloon"></div>
-      </div>
-      <p class="status" id="attFeedback"></p>
-    </div>
     <div class="faces" id="facesStudent"></div>
     <div class="card">
       <div class="label">Teacher's screen</div>
@@ -262,29 +261,69 @@
     const v = document.createElement('video');
     v.autoplay = true; v.playsInline = true; v.muted = true;
     v.className = 'hidden';
+    const bl = document.createElement('div');
+    bl.className = 'balloon-layer hidden';
+    const b = document.createElement('div');
+    b.className = 'balloon small';
+    bl.appendChild(b);
     const n = document.createElement('div');
     n.className = 'n';
     n.textContent = label || '';
-    tile.appendChild(plate); tile.appendChild(v); tile.appendChild(n);
+    tile.appendChild(plate); tile.appendChild(v); tile.appendChild(bl); tile.appendChild(n);
     facesEl().appendChild(tile);
     return tile;
   }
-  function setTileVideo(id, stream, muted) {
+  function tileLayers(id) {
     const tile = document.getElementById('tile-' + id);
-    if (!tile) return;
-    const v = tile.querySelector('video');
-    v.muted = !!muted;
-    v.srcObject = stream;
-    v.classList.remove('hidden');
-    tile.querySelector('.plate').classList.add('hidden');
+    if (!tile) return null;
+    return {
+      tile,
+      plate: tile.querySelector('.plate'),
+      video: tile.querySelector('video'),
+      balloonLayer: tile.querySelector('.balloon-layer'),
+      balloon: tile.querySelector('.balloon'),
+    };
+  }
+  function tileShowBalloon(id) {
+    const L = tileLayers(id);
+    if (!L) return;
+    L.plate.classList.add('hidden');
+    L.video.classList.add('hidden');
+    L.balloon.classList.remove('popped');
+    L.balloonLayer.classList.remove('hidden');
+  }
+  function tileShowPresent(id) {
+    const L = tileLayers(id);
+    if (!L) return;
+    L.balloonLayer.classList.add('hidden');
+    L.video.classList.add('hidden');
+    L.plate.textContent = '✅';
+    L.plate.classList.add('present');
+    L.plate.classList.remove('hidden');
+  }
+  function tileReset(id, label) {
+    const L = tileLayers(id);
+    if (!L) return;
+    L.balloonLayer.classList.add('hidden');
+    L.plate.classList.remove('present');
+    L.plate.textContent = (label || '?').trim().charAt(0).toUpperCase() || '?';
+    if (!L.video.srcObject) L.plate.classList.remove('hidden');
+  }
+  function setTileVideo(id, stream, muted) {
+    const L = tileLayers(id);
+    if (!L) return;
+    L.video.muted = !!muted;
+    L.video.srcObject = stream;
+    L.video.classList.remove('hidden');
+    L.plate.classList.add('hidden');
+    L.balloonLayer.classList.add('hidden');
   }
   function clearTileVideo(id) {
-    const tile = document.getElementById('tile-' + id);
-    if (!tile) return;
-    const v = tile.querySelector('video');
-    v.srcObject = null;
-    v.classList.add('hidden');
-    tile.querySelector('.plate').classList.remove('hidden');
+    const L = tileLayers(id);
+    if (!L) return;
+    L.video.srcObject = null;
+    L.video.classList.add('hidden');
+    if (L.balloonLayer.classList.contains('hidden')) L.plate.classList.remove('hidden');
   }
   function removeTile(id) {
     const t = document.getElementById('tile-' + id);
@@ -503,6 +542,12 @@
       } else {
         show('studentView');
         ensureTile('me', myName || 'You');
+        const myBalloon = tileLayers('me').balloon;
+        myBalloon.addEventListener('click', () => {
+          if (!attOpenMine || myAttOk) return;
+          myBalloon.classList.add('popped');
+          socket.emit('att-pop');
+        });
       }
     });
   }
@@ -732,43 +777,44 @@
     paintAttBtn();
     if (!on) { $('attLive').innerHTML = ''; }
   });
-  socket.on('att-status', ({ round, list }) => renderAttLive(round, list));
+  socket.on('att-status', ({ round, list }) => {
+    renderAttLive(round, list);
+    if (role === 'teacher') {
+      list.forEach((e) => {
+        if (e.status === 'waiting') tileShowBalloon(e.id);
+        else if (e.status === 'ok') tileShowPresent(e.id);
+        else if (e.status === 'camera') tileReset(e.id, e.name);
+      });
+    }
+  });
   socket.on('att-closed', (entry) => {
     attLogLocal.push(entry);
     renderAttLog();
     $('attLive').innerHTML = '';
+    if (role === 'teacher') entry.results.forEach((e) => tileReset(e.id, e.name));
   });
 
-  // Student side of the check: a pink balloon pops up; tap it = present.
-  function resetBalloon() {
-    const b = $('balloon');
-    b.classList.remove('popped');
-    b.style.animation = 'none';
-    void b.offsetWidth; // restart the rise animation
-    b.style.animation = '';
-  }
+  // Student side of the check: the pink balloon appears INSIDE my own box; tap it = present.
+  let attOpenMine = false;
   socket.on('att-open', () => {
     if (role === 'teacher') return;
     myAttOk = false;
-    resetBalloon();
-    $('attFeedback').textContent = '';
-    $('attCard').classList.remove('hidden');
-  });
-  $('balloon').addEventListener('click', () => {
-    if (myAttOk) return;
-    $('balloon').classList.add('popped');
-    socket.emit('att-pop');
+    attOpenMine = true;
+    tileShowBalloon('me');
+    $('studentStatus').textContent = '🎈 Attendance check — tap the pink balloon in your box!';
   });
   socket.on('att-feedback', ({ ok }) => {
     if (ok) {
       myAttOk = true;
-      $('balloon').classList.add('popped');
-      $('attFeedback').textContent = '✅ You are marked present. Thank you!';
+      attOpenMine = false;
+      tileShowPresent('me');
+      $('studentStatus').textContent = '✅ You are marked present. Thank you!';
     }
   });
   socket.on('att-done', () => {
     if (role === 'teacher') return;
-    $('attCard').classList.add('hidden');
+    attOpenMine = false;
+    tileReset('me', myName || 'You');
     if (myAttOk) $('studentStatus').textContent = '✅ Attendance: you are marked present.';
   });
 
@@ -779,13 +825,13 @@
       attLogLocal = att.log || [];
       renderAttLog();
       if (att.open && att.list && att.list.length) renderAttLive(att.round, att.list);
+    } else if (att.answered === 'ok') {
+      myAttOk = true;
+      tileShowPresent('me');
     } else if (att.open) {
-      $('attCard').classList.remove('hidden');
-      if (att.answered === 'ok') {
-        myAttOk = true;
-        $('balloon').classList.add('popped');
-        $('attFeedback').textContent = '✅ You are marked present. Thank you!';
-      }
+      attOpenMine = true;
+      tileShowBalloon('me');
+      $('studentStatus').textContent = '🎈 Attendance check — tap the pink balloon in your box!';
     }
   }
 

@@ -32,14 +32,14 @@ function timeNow() {
 
 function attList(room) {
   const list = [];
-  for (const [, r] of room.attResults.entries()) {
-    list.push({ name: r.name, status: r.status, at: r.at });
+  for (const [id, r] of room.attResults.entries()) {
+    list.push({ id, name: r.name, status: r.status, at: r.at });
   }
   if (room.attOpen) {
     for (const id of room.attTargets) {
       if (!room.attResults.has(id)) {
         const p = room.peers.get(id);
-        list.push({ name: (p && p.name) || 'Student', status: 'waiting', at: '' });
+        list.push({ id, name: (p && p.name) || 'Student', status: 'waiting', at: '' });
       }
     }
   }

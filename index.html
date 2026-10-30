@@ -227,8 +227,6 @@
     </div>
     <div class="row">
       <button class="bigbtn blue" id="shareBtn">🖥️ 1. Share my screen</button>
-      <button class="bigbtn gray" id="teacherMicBtn">🎤 2. Turn my microphone on</button>
-      <button class="bigbtn gray" id="teacherCamBtn">📷 3. Turn my camera on</button>
     </div>
     <div class="row">
       <button class="bigbtn gray" id="recBtn">⏺ Record lesson</button>
@@ -928,10 +926,6 @@
       $('teacherStatus').textContent = 'Screen sharing was cancelled or blocked. Tap the button and choose a window.';
     }
   });
-
-  $('teacherMicBtn').addEventListener('click', toggleMic);
-
-  $('teacherCamBtn').addEventListener('click', toggleCameraMine);
 
   // ---------- Attendance check ----------
   let attOn = false;

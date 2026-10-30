@@ -92,9 +92,15 @@
   #joinName { font-size: 26px; padding: 20px; }
   #codeInput { font-size: 30px; text-align: center; letter-spacing: .3em; text-transform: uppercase; }
   /* Hearts floating over the class */
-  #reactions { position: fixed; left: 0; right: 0; bottom: 12px; display: flex; flex-direction: column; align-items: center; gap: 2px; pointer-events: none; z-index: 60; }
-  .float-heart { font-size: 30px; font-weight: 800; color: #fff; text-shadow: 0 2px 10px rgba(0,0,0,.6); animation: floatUp 3.2s ease-out forwards; }
-  @keyframes floatUp { 0% { transform: translateY(30px) scale(.7); opacity: 0; } 12% { opacity: 1; transform: translateY(0) scale(1.1); } 30% { transform: translateY(-10px) scale(1); } 100% { transform: translateY(-190px) scale(1); opacity: 0; } }
+  #reactions { position: fixed; inset: 0; pointer-events: none; z-index: 60; overflow: hidden; }
+  .fly-emoji { position: absolute; bottom: -70px; display: flex; align-items: center; gap: 6px; animation: flyUp 3.6s ease-out forwards; will-change: transform, opacity; }
+  .fly-emoji .em { font-size: 42px; filter: drop-shadow(0 3px 8px rgba(0,0,0,.45)); }
+  .fly-emoji .who { font-size: 13px; font-weight: 700; color: #fff; background: rgba(15,23,42,.55); padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
+  @keyframes flyUp { 0% { transform: translate(0, 0) scale(.6); opacity: 0; } 10% { opacity: 1; transform: translate(8px, -70px) scale(1.08); } 35% { transform: translate(-12px, -32vh) scale(1); } 65% { transform: translate(10px, -58vh) scale(1.02); } 100% { transform: translate(-6px, -88vh) scale(1); opacity: 0; } }
+  #emojiPicker { position: fixed; left: 50%; bottom: 88px; transform: translateX(-50%); background: #fff; border-radius: 18px; box-shadow: 0 12px 40px rgba(2,6,23,.35); padding: 10px; display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px; z-index: 70; max-width: 94vw; }
+  #emojiPicker.hidden { display: none; }
+  #emojiPicker button { font-size: 30px; background: none; border: 0; padding: 7px; cursor: pointer; border-radius: 12px; line-height: 1; }
+  #emojiPicker button:hover { background: #f1f5f9; }
   /* Mute button on my camera box */
   .tile .micbtn { position: absolute; top: 6px; right: 6px; width: 40px; height: 40px; border-radius: 50%; border: none; font-size: 19px; background: rgba(0,0,0,.65); color: #fff; cursor: pointer; }
   .tile .micbtn.live { background: #16a34a; }
@@ -189,7 +195,7 @@
       <textarea id="answerBox" data-i18n-ph="answerPh" placeholder="Type here… your teacher sees it right away"></textarea>
     </div>
     <div class="row">
-      <button class="bigbtn" id="heartBtnS" style="background:#ec4899;color:#fff;">❤️ Send a heart</button>
+      <button class="bigbtn" id="heartBtnS" style="background:#ec4899;color:#fff;">😊 Emoji</button>
       <button class="bigbtn gray" id="chatBtnS">💬 Message your teacher<span class="badge hidden" id="chatBadgeS">0</span></button>
     </div>
     <p class="status" id="studentStatus"></p>
@@ -229,7 +235,7 @@
       <button class="bigbtn gray" id="soundBtnT">🔊 Sound on</button>
     </div>
     <div class="row">
-      <button class="bigbtn" id="heartBtnT" style="background:#ec4899;color:#fff;">❤️ Send a heart</button>
+      <button class="bigbtn" id="heartBtnT" style="background:#ec4899;color:#fff;">😊 Emoji</button>
       <button class="bigbtn gray" id="chatBtnT">💬 Private messages<span class="badge hidden" id="chatBadgeT">0</span></button>
     </div>
     <p class="status" id="teacherStatus"></p>
@@ -271,12 +277,11 @@
       <p class="sub">Students with their <b>camera ON</b> are marked present by their camera. Students with <b>camera OFF</b> get a pink balloon 🎈 on their phone — one tap = present. No tap in 1 minute = not marked.</p>
       <div class="label">Balloon check every — tap one</div>
       <div class="row" id="attMinutesRow">
-        <button class="bigbtn green att-min" data-min="5">5 min</button>
-        <button class="bigbtn gray att-min" data-min="10">10 min</button>
-        <button class="bigbtn gray att-min" data-min="15">15 min</button>
+        <label class="sub" style="align-self:center;">🎈 Balloon every</label>
+        <input type="number" id="attEveryInput" min="1" max="180" value="5" style="width:90px;font-size:20px;padding:10px;border:2px solid #cbd5e1;border-radius:10px;text-align:center;">
+        <label class="sub" style="align-self:center;">minutes</label>
       </div>
       <button class="bigbtn green" id="attBtn">Start attendance checks</button>
-      <button class="bigbtn" id="attNowBtn" style="background:#ec4899;color:#fff;">🎈 Send the balloon NOW</button>
       <div id="attLive"></div>
       <div id="attLogView"></div>
       <button class="bigbtn gray hidden" id="attSaveBtn" style="margin-top:14px;">💾 Save attendance record</button>
@@ -309,6 +314,7 @@
 </div>
 
 <!-- Reactions float over everything -->
+<div id="emojiPicker" class="hidden"></div>
 <div id="reactions"></div>
 
 <!-- Private chat — fixed panel on the RIGHT side -->
@@ -972,14 +978,11 @@
   }
 
   let attMinutesChosen = 5;
-  document.querySelectorAll('.att-min').forEach((b) => {
-    b.addEventListener('click', () => {
-      attMinutesChosen = parseInt(b.dataset.min, 10);
-      document.querySelectorAll('.att-min').forEach((x) => {
-        x.className = 'bigbtn att-min ' + (parseInt(x.dataset.min, 10) === attMinutesChosen ? 'green' : 'gray');
-      });
-      socket.emit('att-set-minutes', { minutes: attMinutesChosen });
-    });
+  $('attEveryInput').addEventListener('change', () => {
+    const v = parseInt($('attEveryInput').value, 10);
+    attMinutesChosen = Math.min(180, Math.max(1, isNaN(v) ? 5 : v));
+    $('attEveryInput').value = attMinutesChosen;
+    socket.emit('att-set-minutes', { minutes: attMinutesChosen });
   });
   $('attBtn').addEventListener('click', () => {
     attOn = !attOn;
@@ -1147,16 +1150,27 @@
     socket.emit('set-lang', { lang: v });
   });
 
-  // ---------- Hearts ----------
-  function sendHeart() { socket.emit('react'); }
-  $('heartBtnS').addEventListener('click', sendHeart);
-  $('heartBtnT').addEventListener('click', sendHeart);
-  socket.on('react', ({ name }) => {
+  // ---------- Reactions: emoji picker — tap one, it flies up everyone's screen ----------
+  const EMOJIS = ['❤️', '😊', '😂', '👍', '👏', '🎉', '😍', '🙏', '🔥', '💯', '✨', '🌟', '😮', '😢', '🤣', '🥰', '😎', '🙌', '💪', '🎈', '🌹', '⭐', '🍀', '🎁', '👋', '💖', '🤔', '😅', '🥳', '🫶', '👀', '💐', '🏆', '📚', '✏️', '🎶'];
+  const picker = $('emojiPicker');
+  EMOJIS.forEach((e) => {
+    const b = document.createElement('button');
+    b.textContent = e;
+    b.addEventListener('click', () => { socket.emit('react', { emoji: e }); picker.classList.add('hidden'); });
+    picker.appendChild(b);
+  });
+  function togglePicker() { picker.classList.toggle('hidden'); }
+  $('heartBtnS').addEventListener('click', togglePicker);
+  $('heartBtnT').addEventListener('click', togglePicker);
+  socket.on('react', ({ name, emoji }) => {
     const d = document.createElement('div');
-    d.className = 'float-heart';
-    d.textContent = '❤️ ' + name;
+    d.className = 'fly-emoji';
+    d.style.left = (6 + Math.random() * 76) + '%';
+    const em = document.createElement('span'); em.className = 'em'; em.textContent = emoji || '❤️';
+    const who = document.createElement('span'); who.className = 'who'; who.textContent = name;
+    d.appendChild(em); d.appendChild(who);
     $('reactions').appendChild(d);
-    setTimeout(() => d.remove(), 3300);
+    setTimeout(() => d.remove(), 3700);
   });
 
   // ---------- Private chat (panel on the RIGHT side) ----------
@@ -1235,12 +1249,6 @@
     if (!chatOpen) { chatUnread += 1; chatBadgePaint(); }
     if (role === 'teacher' && !chatActiveThread) chatActiveThread = thread;
     if (chatOpen) renderChat();
-  });
-
-  // ---------- Balloon NOW ----------
-  $('attNowBtn').addEventListener('click', () => {
-    socket.emit('att-now');
-    $('teacherStatus').textContent = '🎈 Balloon sent to the class!';
   });
 
   // ---------- Lesson recording (teacher) ----------

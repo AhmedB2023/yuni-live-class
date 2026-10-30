@@ -55,14 +55,6 @@ function closeAttRound(io, code) {
   room.attLog.push(entry);
   if (room.teacherId) io.to(room.teacherId).emit('att-closed', entry);
   io.to(code).emit('att-done', { round: room.attRound });
-  // A one-off balloon (teacher pressed "send NOW" while auto checks were off)
-  // turns the checks back off when its round ends.
-  if (room.attOnce) {
-    room.attOnce = false;
-    room.attOn = false;
-    if (room.attTimer) { clearInterval(room.attTimer); room.attTimer = null; }
-    if (room.teacherId) io.to(room.teacherId).emit('att-state', { on: false });
-  }
 }
 
 function startAttRound(io, code) {
@@ -190,7 +182,6 @@ io.on('connection', (socket) => {
       attEveryMs: 5 * 60 * 1000,
       attResults: new Map(),
       attLog: [],
-      attOnce: false,
       lang: 'en',
       drawStrokes: [],
       chats: new Map(),
@@ -287,7 +278,7 @@ io.on('connection', (socket) => {
     const room = rooms.get(myRoom);
     if (!room) return;
     if (on && !room.attOn) {
-      const mins = [5, 10, 15].includes(parseInt(minutes, 10)) ? parseInt(minutes, 10) : 5;
+      const mins = Math.min(180, Math.max(1, parseInt(minutes, 10) || 5));
       room.attEveryMs = mins * 60 * 1000;
       room.attOn = true;
       startAttRound(io, myRoom);
@@ -307,7 +298,7 @@ io.on('connection', (socket) => {
     if (!myRoom || myRole !== 'teacher') return;
     const room = rooms.get(myRoom);
     if (!room) return;
-    const mins = [5, 10, 15].includes(parseInt(minutes, 10)) ? parseInt(minutes, 10) : 5;
+    const mins = Math.min(180, Math.max(1, parseInt(minutes, 10) || 5));
     room.attEveryMs = mins * 60 * 1000;
     if (room.attOn && room.attTimer) {
       clearInterval(room.attTimer);
@@ -351,14 +342,16 @@ io.on('connection', (socket) => {
     if (room.teacherId) io.to(room.teacherId).emit('att-status', { round: room.attRound, list: attList(room) });
   });
 
-  // ---- Hearts: anyone taps ❤️, the whole class sees the heart + their name ----
-  socket.on('react', () => {
+  // ---- Reactions: anyone taps an emoji, it flies up everyone's screen with their name ----
+  socket.on('react', (data) => {
     if (!myRoom) return;
     const room = rooms.get(myRoom);
     if (!room) return;
     const peer = room.peers.get(socket.id);
     const name = myRole === 'teacher' ? 'Teacher' : ((peer && peer.name) || 'Student');
-    io.to(myRoom).emit('react', { name });
+    const raw = data && typeof data.emoji === 'string' ? data.emoji : '❤️';
+    const emoji = Array.from(raw).slice(0, 4).join('') || '❤️';
+    io.to(myRoom).emit('react', { name, emoji });
   });
 
   // ---- Private chat: student <-> teacher only, never student <-> student ----
@@ -384,27 +377,6 @@ io.on('connection', (socket) => {
       room.chats.get(target).push(msg);
       io.to(target).emit('chat', { thread: target, msg });
       socket.emit('chat', { thread: target, msg: { ...msg, mine: true } });
-    }
-  });
-
-  // ---- Balloon NOW: the teacher fires a check any time she decides ----
-  socket.on('att-now', () => {
-    if (!myRoom || myRole !== 'teacher') return;
-    const room = rooms.get(myRoom);
-    if (!room) return;
-    if (room.attOn) {
-      startAttRound(io, myRoom);
-      if (room.attTimer) {
-        clearInterval(room.attTimer);
-        room.attTimer = setInterval(() => {
-          if (!rooms.has(myRoom)) return;
-          startAttRound(io, myRoom);
-        }, room.attEveryMs);
-      }
-    } else {
-      room.attOnce = true;
-      room.attOn = true;
-      startAttRound(io, myRoom);
     }
   });
 

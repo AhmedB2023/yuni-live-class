@@ -26,12 +26,14 @@ const REQUESTS_KEY = process.env.REQUESTS_KEY || 'ylc-builder-2026';
 function escHtml(x) {
   return String(x).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
-app.get('/requests', (req, res) => {
+app.get('/requests', async (req, res) => {
   if (req.query.key !== REQUESTS_KEY) { res.status(403).send('Wrong key.'); return; }
-  const items = featureRequests.slice().reverse().map((r) =>
+  const stored = await storeListRequests();
+  const list = stored || featureRequests.slice().reverse();
+  const items = list.map((r) =>
     '<li style="margin:10px 0;"><b>' + escHtml(r.at) + '</b> — room <b>' + escHtml(r.room) + '</b><br>' + escHtml(r.text) + '</li>').join('');
   res.send('<html><head><meta charset="utf-8"><title>Feature requests</title></head><body style="font-family:sans-serif;max-width:700px;margin:30px auto;padding:0 16px;">'
-    + '<h2>✨ Feature requests from teachers (' + featureRequests.length + ')</h2>'
+    + '<h2>✨ Feature requests from teachers (' + list.length + ')</h2>'
     + (items ? '<ul>' + items + '</ul>' : '<p>No requests yet.</p>')
     + '</body></html>');
 });
@@ -40,6 +42,86 @@ app.get('/requests', (req, res) => {
 //                attOn, attTimer, attCloseTimer, attRound, attOpen,
 //                attResults: Map<socketId, {name, status, at}>, attLog: [{round, at, results}] }
 const rooms = new Map();
+
+// ---- Small permanent memory (his existing Render Postgres, DATABASE_URL) ----
+// Holds: room registry (name -> {pinHash, lang}) and the feature-request list.
+// The database instance is paid, so it never expires and never sleeps.
+// This app's tables are prefixed ylc_ and never touch the other app's tables.
+// Without DATABASE_URL it falls back to plain memory (local tests).
+const crypto = require('crypto');
+let pgPool = null;
+let pgReady = null;
+function getPgPool() {
+  if (!process.env.DATABASE_URL) return null;
+  if (!pgPool) {
+    const { Pool } = require('pg');
+    pgPool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+    pgPool.on('error', (e) => console.error('[db:ERROR]', e.message));
+  }
+  return pgPool;
+}
+async function pgInit() {
+  const p = getPgPool();
+  if (!p) return false;
+  if (!pgReady) {
+    pgReady = (async () => {
+      await p.query('CREATE TABLE IF NOT EXISTS ylc_kv (key TEXT PRIMARY KEY, value TEXT)');
+      await p.query('CREATE TABLE IF NOT EXISTS ylc_requests (id SERIAL PRIMARY KEY, body TEXT)');
+      return true;
+    })().catch((e) => { console.error('[db] init failed:', e.message); pgReady = null; return false; });
+  }
+  return pgReady;
+}
+async function storeGet(key) {
+  const p = getPgPool(); if (!p) return null;
+  try {
+    if (!(await pgInit())) return null;
+    const r = await p.query('SELECT value FROM ylc_kv WHERE key = $1', [key]);
+    return r.rows.length ? r.rows[0].value : null;
+  } catch (e) { return null; }
+}
+async function storeSet(key, value) {
+  const p = getPgPool(); if (!p) return;
+  try {
+    if (!(await pgInit())) return;
+    await p.query('INSERT INTO ylc_kv (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value', [key, value]);
+  } catch (e) {}
+}
+async function storePushRequest(entry) {
+  const p = getPgPool(); if (!p) return;
+  try {
+    if (!(await pgInit())) return;
+    await p.query('INSERT INTO ylc_requests (body) VALUES ($1)', [JSON.stringify(entry)]);
+  } catch (e) {}
+}
+async function storeListRequests() {
+  const p = getPgPool(); if (!p) return null;
+  try {
+    if (!(await pgInit())) return null;
+    const r = await p.query('SELECT body FROM ylc_requests ORDER BY id DESC LIMIT 200');
+    if (!r.rows.length) return null;
+    return r.rows.map((row) => { try { return JSON.parse(row.body); } catch (e) { return null; } }).filter(Boolean);
+  } catch (e) { return null; }
+}
+const roomRegistry = new Map();
+async function loadRoomReg(name) {
+  if (roomRegistry.has(name)) return roomRegistry.get(name);
+  const raw = await storeGet('ylc:room:' + name);
+  if (raw) {
+    try { const d = JSON.parse(raw); roomRegistry.set(name, d); return d; } catch (e) {}
+  }
+  return null;
+}
+function saveRoomReg(name, data) {
+  roomRegistry.set(name, data);
+  storeSet('ylc:room:' + name, JSON.stringify(data));
+}
+function pinHash(name, pin) {
+  return crypto.createHash('sha256').update(name + ':' + String(pin || '')).digest('hex');
+}
+function cleanRoomName(x) {
+  return String(x || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 20);
+}
 
 const ATT_ROUND_SECONDS = 60;
 
@@ -180,9 +262,8 @@ io.on('connection', (socket) => {
   let myRoom = null;
   let myRole = null;
 
-  socket.on('create-room', (cb) => {
-    const code = makeCode();
-    rooms.set(code, {
+  function newRoomState() {
+    return {
       teacherId: socket.id,
       prompt: '',
       boardSegs: [],
@@ -206,17 +287,49 @@ io.on('connection', (socket) => {
       requests: [],
       groups: null,
       groupOf: new Map(),
-    });
-    if (typeof cb === 'function') cb({ code });
+      pinHash: null,
+    };
+  }
+
+  // Semester room: the teacher claims her room NAME once, guarded by her PIN.
+  // The same name is her link for the whole semester (students open ?room=NAME).
+  socket.on('create-room', async (data, cb) => {
+    const roomName = cleanRoomName(data && data.name);
+    if (roomName.length < 3) { if (typeof cb === 'function') cb({ error: 'NAME_BAD' }); return; }
+    const hash = pinHash(roomName, data && data.pin);
+    const reg = await loadRoomReg(roomName);
+    if (reg && reg.pinHash !== hash) { if (typeof cb === 'function') cb({ error: 'PIN_WRONG' }); return; }
+    if (!reg) saveRoomReg(roomName, { pinHash: hash, lang: 'en' });
+    if (!rooms.has(roomName)) {
+      const room = newRoomState();
+      room.pinHash = hash;
+      const reg2 = await loadRoomReg(roomName);
+      if (reg2 && reg2.lang) room.lang = reg2.lang;
+      rooms.set(roomName, room);
+    }
+    if (typeof cb === 'function') cb({ code: roomName });
   });
 
-  socket.on('join-room', ({ code, role, name }, cb) => {
-    const room = rooms.get((code || '').toUpperCase().trim());
+  socket.on('join-room', async ({ code, role, name, pin }, cb) => {
+    const codeUp = (code || '').toUpperCase().trim();
+    let room = rooms.get(codeUp);
     if (!room) {
-      if (typeof cb === 'function') cb({ error: 'Room not found. Check the link or code.' });
+      // A registered semester room wakes up on demand — students can wait inside.
+      const reg = await loadRoomReg(cleanRoomName(codeUp));
+      if (!reg) {
+        if (typeof cb === 'function') cb({ error: 'Room not found. Check the link or code.' });
+        return;
+      }
+      room = newRoomState();
+      room.pinHash = reg.pinHash;
+      if (reg.lang) room.lang = reg.lang;
+      rooms.set(codeUp, room);
+    }
+    if (role === 'teacher' && room.pinHash && pinHash(codeUp, pin) !== room.pinHash) {
+      if (typeof cb === 'function') cb({ error: 'PIN_WRONG' });
       return;
     }
-    myRoom = (code || '').toUpperCase().trim();
+    myRoom = codeUp;
     myRole = role === 'teacher' ? 'teacher' : 'student';
     if (myRole === 'teacher') room.teacherId = socket.id;
     room.peers.set(socket.id, { role: myRole, name: name || '', camOn: false });
@@ -431,6 +544,7 @@ io.on('connection', (socket) => {
     const entry = { at: timeNow(), room: myRoom, text: clean };
     room.requests.push(entry);
     featureRequests.push(entry);
+    storePushRequest(entry);
     socket.emit('feature-request-ack', { ok: true });
   });
 
@@ -442,6 +556,7 @@ io.on('connection', (socket) => {
     const ok = ['en', 'es', 'pt', 'fr', 'ar', 'id', 'vi', 'zh'];
     room.lang = ok.includes(lang) ? lang : 'en';
     io.to(myRoom).emit('lang', { lang: room.lang });
+    loadRoomReg(myRoom).then((reg) => { if (reg) { reg.lang = room.lang; saveRoomReg(myRoom, reg); } });
   });
 
   // ---- Drawing on the shared screen (teacher draws, everyone sees) ----

@@ -43,6 +43,12 @@
   .linkbox button { padding: 0 22px; font-size: 19px; font-weight: 700; border: none; border-radius: 12px; background: #38bdf8; color: #082f49; cursor: pointer; }
   .status { font-size: 17px; color: #fbbf24; min-height: 24px; margin: 8px 0; }
   .mic-on { outline: 4px solid #22c55e; }
+  .faces { display: flex; gap: 10px; flex-wrap: wrap; margin: 12px 0; }
+  .tile { position: relative; width: 150px; }
+  .tile video { width: 100%; border-radius: 12px; background: #000; aspect-ratio: 4/3; object-fit: cover; }
+  .tile .n { position: absolute; bottom: 6px; left: 6px; font-size: 13px; font-weight: 700; background: rgba(0,0,0,.65); padding: 2px 8px; border-radius: 6px; }
+  .att-row { font-size: 21px; padding: 6px 0; border-bottom: 1px solid #334155; }
+  .att-round { font-size: 16px; color: #94a3b8; margin-top: 12px; }
   .row { display: flex; gap: 12px; flex-wrap: wrap; }
   .row .bigbtn { flex: 1; min-width: 220px; }
   #joinName { font-size: 26px; padding: 20px; }
@@ -75,6 +81,14 @@
 
   <!-- ============ STUDENT: CLASS ============ -->
   <section id="studentView" class="hidden">
+    <div class="card hidden" id="attCard" style="border:3px solid #fbbf24;">
+      <div class="label">🔔 Attendance check!</div>
+      <p style="font-size:22px; margin-bottom:10px;">Type the word your teacher says out loud:</p>
+      <input type="text" id="attInput" placeholder="Type the word here" autocomplete="off">
+      <button class="bigbtn green" id="attSendBtn">✅ I'M HERE</button>
+      <p class="status" id="attFeedback"></p>
+    </div>
+    <div class="faces" id="facesStudent"></div>
     <div class="card">
       <div class="label">Teacher's screen</div>
       <video id="screenVideo" autoplay playsinline></video>
@@ -92,7 +106,10 @@
       <div class="label">✍️ Write your answer here</div>
       <textarea id="answerBox" placeholder="Type here… your teacher sees it right away"></textarea>
     </div>
-    <button class="bigbtn gray" id="micBtn">🎤 Tap to speak</button>
+    <div class="row">
+      <button class="bigbtn gray" id="micBtn">🎤 Tap to speak</button>
+      <button class="bigbtn gray" id="camBtn">📷 Show my face</button>
+    </div>
     <p class="status" id="studentStatus"></p>
   </section>
 
@@ -110,8 +127,10 @@
     <div class="row">
       <button class="bigbtn blue" id="shareBtn">🖥️ 1. Share my screen</button>
       <button class="bigbtn gray" id="teacherMicBtn">🎤 2. Turn my microphone on</button>
+      <button class="bigbtn gray" id="teacherCamBtn">📷 3. Turn my camera on</button>
     </div>
     <p class="status" id="teacherStatus"></p>
+    <div class="faces" id="facesTeacher"></div>
     <div class="card">
       <div class="label">My screen (only you see this preview)</div>
       <video id="teacherPreview" autoplay playsinline muted style="width:100%;border-radius:12px;background:#000;"></video>
@@ -123,6 +142,20 @@
     <div class="card">
       <div class="label">🤝 Class whiteboard — you and your students type here together</div>
       <textarea id="boardInput" rows="7" placeholder="Write words, examples, corrections — students can type here too…"></textarea>
+    </div>
+    <div class="card">
+      <div class="label">✅ Attendance check — every 5 minutes</div>
+      <p class="sub">When ON: every 5 minutes, each student must type the word you say out loud. Green ✅ = present. The first check starts right away.</p>
+      <button class="bigbtn green" id="attBtn">Start attendance checks</button>
+      <div id="attWordBox" class="hidden" style="margin-top:10px;">
+        <div class="label">Say this word out loud now</div>
+        <div id="attWord" style="font-size:44px; font-weight:800; letter-spacing:.04em;"></div>
+      </div>
+      <div class="label" style="margin-top:12px;">Your own word for the checks (or leave empty — the app picks one)</div>
+      <input type="text" id="attCustomWord" placeholder="Example: banana" autocomplete="off">
+      <div id="attLive"></div>
+      <div id="attLogView"></div>
+      <button class="bigbtn gray hidden" id="attSaveBtn" style="margin-top:14px;">💾 Save attendance record</button>
     </div>
     <div class="card">
       <div class="label">Student answers — live</div>
@@ -145,10 +178,13 @@
   let myName = localStorage.getItem('ylc-name') || '';
 
   const socket = io();
-  const peers = new Map(); // socketId -> { pc, makingOffer, ignoreOffer, polite }
-  let localStream = null;  // combined mic (+ screen for teacher)
+  const peers = new Map(); // socketId -> { pc, makingOffer, ignoreOffer, polite, senders }
+  let localStream = null;  // combined local tracks (kept in sync by rebuildLocalStream)
   let screenStream = null;
   let micStream = null;
+  let camStream = null;
+  const kindByStream = new Map(); // remote streamId -> 'screen' | 'camera' | 'audio'
+  const peerNames = new Map();    // socketId -> name
   let joined = false;
 
   const RTC_CFG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
@@ -158,32 +194,64 @@
     $(id).classList.remove('hidden');
   }
 
-  function rebuildLocalStream() {
-    const tracks = [];
-    if (screenStream) tracks.push(...screenStream.getVideoTracks());
-    if (micStream) tracks.push(...micStream.getAudioTracks());
-    localStream = new MediaStream(tracks);
-    // Push the new track set into every existing connection.
-    peers.forEach(({ pc }) => {
-      const senders = pc.getSenders();
-      const kinds = ['video', 'audio'];
-      kinds.forEach((kind) => {
-        const track = localStream.getTracks().find((t) => t.kind === kind) || null;
-        const sender = senders.find((s) => s.track && s.track.kind === kind);
-        if (sender && track) sender.replaceTrack(track);
-        else if (sender && !track) sender.replaceTrack(null);
-        else if (!sender && track) pc.addTrack(track, localStream);
-      });
+  function slotList() {
+    const pick = (stream, kind) => {
+      if (!stream) return null;
+      return stream.getTracks().find((t) => t.kind === kind) || null;
+    };
+    return [
+      { slot: 'screen', track: pick(screenStream, 'video'), stream: screenStream },
+      { slot: 'camera', track: pick(camStream, 'video'), stream: camStream },
+      { slot: 'audio', track: pick(micStream, 'audio'), stream: micStream },
+    ];
+  }
+
+  function announceKind(stream, kind) {
+    if (stream) socket.emit('stream-kind', { streamId: stream.id, kind });
+  }
+
+  function syncPeer(state) {
+    if (!state.senders) state.senders = {};
+    slotList().forEach(({ slot, track, stream }) => {
+      const sender = state.senders[slot];
+      if (sender) { sender.replaceTrack(track).catch(() => {}); }
+      else if (track) { state.senders[slot] = state.pc.addTrack(track, stream); }
     });
+  }
+
+  function rebuildLocalStream() {
+    const tracks = slotList().filter((s) => s.track).map((s) => s.track);
+    localStream = new MediaStream(tracks);
+    peers.forEach((state) => syncPeer(state));
+  }
+
+  function facesEl() { return role === 'teacher' ? $('facesTeacher') : $('facesStudent'); }
+
+  function addTile(id, stream, label, muted) {
+    removeTile(id);
+    const tile = document.createElement('div');
+    tile.className = 'tile';
+    tile.id = 'tile-' + id;
+    const v = document.createElement('video');
+    v.autoplay = true; v.playsInline = true; v.muted = !!muted;
+    v.srcObject = stream;
+    const n = document.createElement('div');
+    n.className = 'n';
+    n.textContent = label;
+    tile.appendChild(v); tile.appendChild(n);
+    facesEl().appendChild(tile);
+  }
+  function removeTile(id) {
+    const t = document.getElementById('tile-' + id);
+    if (t) t.remove();
   }
 
   function makePeer(peerId) {
     if (peers.has(peerId)) return peers.get(peerId);
     const pc = new RTCPeerConnection(RTC_CFG);
-    const state = { pc, makingOffer: false, ignoreOffer: false, polite: socket.id > peerId };
+    const state = { pc, makingOffer: false, ignoreOffer: false, polite: socket.id > peerId, senders: {} };
     peers.set(peerId, state);
-
-    if (localStream) localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
+    syncPeer(state);
 
     pc.onicecandidate = ({ candidate }) => {
       if (candidate) socket.emit('rtc-ice', { to: peerId, candidate });
@@ -197,32 +265,8 @@
     };
     pc.ontrack = ({ streams }) => {
       const stream = streams[0];
-      if (role === 'teacher') {
-        // Student voice: play it through a small audio element.
-        let el = document.getElementById('audio-' + peerId);
-        if (!el) {
-          el = document.createElement('audio');
-          el.id = 'audio-' + peerId;
-          el.autoplay = true;
-          document.body.appendChild(el);
-        }
-        el.srcObject = stream;
-      } else {
-        // Student side: any incoming video is the teacher's screen.
-        if (stream.getVideoTracks().length > 0) {
-          $('screenVideo').srcObject = stream;
-          $('screenStatus').textContent = 'You are watching your teacher\'s screen.';
-        } else {
-          let el = document.getElementById('audio-' + peerId);
-          if (!el) {
-            el = document.createElement('audio');
-            el.id = 'audio-' + peerId;
-            el.autoplay = true;
-            document.body.appendChild(el);
-          }
-          el.srcObject = stream;
-        }
-      }
+      if (!stream) return;
+      routeRemote(peerId, stream);
     };
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
@@ -232,13 +276,71 @@
     return state;
   }
 
+  // ---------- Remote media routing: screen vs camera vs voice ----------
+  const routedStreams = new Set();
+  function playAudio(peerId, stream) {
+    let el = document.getElementById('audio-' + peerId);
+    if (!el) {
+      el = document.createElement('audio');
+      el.id = 'audio-' + peerId;
+      el.autoplay = true;
+      document.body.appendChild(el);
+    }
+    el.srcObject = stream;
+  }
+  function routeRemote(peerId, stream) {
+    const key = peerId + ':' + stream.id;
+    if (routedStreams.has(key)) return;
+    const kind = kindByStream.get(stream.id);
+    if (!kind) {
+      // The kind message normally arrives just before the tracks; give it a moment.
+      setTimeout(() => routeRemote(peerId, stream), 600);
+      setTimeout(() => {
+        if (routedStreams.has(key)) return;
+        const guess = stream.getVideoTracks().length === 0 ? 'audio'
+          : (role !== 'teacher' && !$('screenVideo').srcObject ? 'screen' : 'camera');
+        applyRemote(peerId, stream, guess);
+      }, 1800);
+      return;
+    }
+    applyRemote(peerId, stream, kind);
+  }
+  function applyRemote(peerId, stream, kind) {
+    const key = peerId + ':' + stream.id;
+    if (routedStreams.has(key)) return;
+    routedStreams.add(key);
+    if (kind === 'audio') { playAudio(peerId, stream); return; }
+    if (kind === 'screen') {
+      if (role !== 'teacher') {
+        $('screenVideo').srcObject = stream;
+        $('screenStatus').textContent = 'You are watching your teacher\'s screen.';
+      }
+      return;
+    }
+    // camera
+    addTile(peerId, stream, peerNames.get(peerId) || (role === 'teacher' ? 'Student' : 'Class'), false);
+  }
+
+  socket.on('stream-kind', ({ from, streamId, kind }) => { kindByStream.set(streamId, kind); });
+  socket.on('media-off', ({ from, kind }) => {
+    if (kind === 'camera') removeTile(from);
+    if (kind === 'screen' && role !== 'teacher') {
+      $('screenVideo').srcObject = null;
+      $('screenStatus').textContent = 'Waiting for the teacher to share her screen…';
+    }
+  });
+
   socket.on('existing-peers', (ids) => ids.forEach((id) => makePeer(id)));
-  socket.on('peer-joined', ({ id }) => makePeer(id));
+  socket.on('peer-joined', ({ id, name }) => {
+    if (name) peerNames.set(id, name);
+    makePeer(id);
+  });
   socket.on('peer-left', ({ id }) => {
     const p = peers.get(id);
     if (p) { try { p.pc.close(); } catch (e) {} peers.delete(id); }
     const el = document.getElementById('audio-' + id);
     if (el) el.remove();
+    removeTile(id);
   });
 
   socket.on('rtc-offer', async ({ from, sdp }) => {
@@ -295,6 +397,7 @@
       state.answers.forEach((a) => renderAnswer(a.id, a.name, a.text));
     }
     boardEl().value = state.board || '';
+    if (state.att) restoreAtt(state.att);
   });
 
   const answerCards = new Map();
@@ -397,6 +500,7 @@
     }
     try {
       micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      announceKind(micStream, 'audio');
       rebuildLocalStream();
       $('micBtn').textContent = '🔴 You are speaking — tap to stop';
       $('micBtn').classList.add('mic-on');
@@ -422,6 +526,7 @@
       screenStream.getTracks().forEach((t) => t.stop());
       screenStream = null;
       rebuildLocalStream();
+      socket.emit('media-off', { kind: 'screen' });
       $('teacherPreview').srcObject = null;
       $('shareBtn').textContent = '🖥️ 1. Share my screen';
       $('teacherStatus').textContent = 'Screen sharing stopped.';
@@ -429,9 +534,11 @@
     }
     try {
       screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      announceKind(screenStream, 'screen');
       screenStream.getVideoTracks()[0].addEventListener('ended', () => {
         screenStream = null;
         rebuildLocalStream();
+        socket.emit('media-off', { kind: 'screen' });
         $('shareBtn').textContent = '🖥️ 1. Share my screen';
       });
       $('teacherPreview').srcObject = screenStream;
@@ -454,6 +561,7 @@
     }
     try {
       micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      announceKind(micStream, 'audio');
       rebuildLocalStream();
       $('teacherMicBtn').textContent = '🔴 Microphone is ON — tap to mute';
       $('teacherMicBtn').classList.add('mic-on');
@@ -461,6 +569,172 @@
       $('teacherStatus').textContent = 'The microphone is blocked. Allow it in your browser, then tap again.';
     }
   });
+
+  // ---------- Camera: everyone can show their face ----------
+  async function toggleCamera(btn, offLabel, onLabel, statusEl) {
+    if (camStream) {
+      camStream.getTracks().forEach((t) => t.stop());
+      camStream = null;
+      rebuildLocalStream();
+      removeTile('me');
+      socket.emit('media-off', { kind: 'camera' });
+      btn.textContent = offLabel;
+      btn.classList.remove('mic-on');
+      return;
+    }
+    try {
+      camStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      announceKind(camStream, 'camera');
+      rebuildLocalStream();
+      addTile('me', camStream, 'You', true);
+      btn.textContent = onLabel;
+      btn.classList.add('mic-on');
+    } catch (e) {
+      statusEl.textContent = 'The camera is blocked. Allow the camera in your browser, then tap again.';
+    }
+  }
+  $('camBtn').addEventListener('click', () => toggleCamera($('camBtn'), '📷 Show my face', '🔴 Your face is ON — tap to hide', $('studentStatus')));
+  $('teacherCamBtn').addEventListener('click', () => toggleCamera($('teacherCamBtn'), '📷 3. Turn my camera on', '🔴 Camera is ON — tap to turn off', $('teacherStatus')));
+
+  // ---------- Attendance check ----------
+  let attOn = false;
+  let attLogLocal = [];
+  let myAttOk = false;
+
+  function attRowText(r) {
+    if (r.status === 'ok') return '✅ ' + r.name + ' — present (' + r.at + ')';
+    if (r.status === 'wrong') return '❌ ' + r.name + ' — wrong word (' + r.at + ')';
+    return '⏳ ' + r.name + ' — waiting…';
+  }
+  function attRowsInto(box, list) {
+    list.forEach((r) => {
+      const d = document.createElement('div');
+      d.className = 'att-row';
+      d.textContent = attRowText(r);
+      box.appendChild(d);
+    });
+  }
+  function renderAttLive(round, list) {
+    const box = $('attLive');
+    box.innerHTML = '';
+    const t = document.createElement('div');
+    t.className = 'att-round';
+    t.textContent = 'Check #' + round + ' — happening now:';
+    box.appendChild(t);
+    attRowsInto(box, list);
+  }
+  function renderAttLog() {
+    const box = $('attLogView');
+    box.innerHTML = '';
+    attLogLocal.forEach((e) => {
+      const t = document.createElement('div');
+      t.className = 'att-round';
+      t.textContent = 'Check #' + e.round + ' — ' + e.at + ' — word: ' + e.word;
+      box.appendChild(t);
+      attRowsInto(box, e.results);
+    });
+    $('attSaveBtn').classList.toggle('hidden', attLogLocal.length === 0);
+  }
+  function paintAttBtn() {
+    $('attBtn').textContent = attOn ? '🛑 Stop attendance checks' : 'Start attendance checks';
+    $('attBtn').className = 'bigbtn ' + (attOn ? 'red' : 'green');
+  }
+
+  $('attBtn').addEventListener('click', () => {
+    attOn = !attOn;
+    paintAttBtn();
+    socket.emit('att-toggle', { on: attOn });
+    if (!attOn) { $('attWordBox').classList.add('hidden'); $('attLive').innerHTML = ''; }
+  });
+  $('attCustomWord').addEventListener('change', () => {
+    socket.emit('att-set-word', { word: $('attCustomWord').value });
+  });
+  $('attSaveBtn').addEventListener('click', () => {
+    const lines = ['Attendance record — ' + new Date().toLocaleDateString('en-US')];
+    attLogLocal.forEach((e) => {
+      lines.push('');
+      lines.push('Check #' + e.round + ' — ' + e.at + ' — word: ' + e.word);
+      e.results.forEach((r) => {
+        lines.push('  ' + (r.status === 'ok' ? 'PRESENT' : r.status === 'wrong' ? 'WRONG WORD' : 'NO ANSWER') + ' — ' + r.name + (r.at ? ' (' + r.at + ')' : ''));
+      });
+    });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/plain' }));
+    a.download = 'attendance-record.txt';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
+  socket.on('att-state', ({ on }) => {
+    attOn = on;
+    paintAttBtn();
+    if (!on) { $('attWordBox').classList.add('hidden'); $('attLive').innerHTML = ''; }
+  });
+  socket.on('att-word', ({ word }) => {
+    $('attWord').textContent = (word || '').toUpperCase();
+    $('attWordBox').classList.remove('hidden');
+  });
+  socket.on('att-status', ({ round, list }) => renderAttLive(round, list));
+  socket.on('att-closed', (entry) => {
+    attLogLocal.push(entry);
+    renderAttLog();
+    $('attLive').innerHTML = '';
+  });
+
+  // Student side of the check
+  socket.on('att-open', () => {
+    if (role === 'teacher') return;
+    myAttOk = false;
+    $('attInput').value = '';
+    $('attInput').disabled = false;
+    $('attSendBtn').disabled = false;
+    $('attFeedback').textContent = '';
+    $('attCard').classList.remove('hidden');
+    $('attInput').focus();
+  });
+  $('attSendBtn').addEventListener('click', () => {
+    socket.emit('att-answer', { word: $('attInput').value });
+  });
+  $('attInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') socket.emit('att-answer', { word: $('attInput').value });
+  });
+  socket.on('att-feedback', ({ ok }) => {
+    if (ok) {
+      myAttOk = true;
+      $('attFeedback').textContent = '✅ You are marked present. Thank you!';
+      $('attInput').disabled = true;
+      $('attSendBtn').disabled = true;
+    } else {
+      $('attFeedback').textContent = '❌ That is not the word. Listen to your teacher and try again.';
+    }
+  });
+  socket.on('att-done', () => {
+    if (role === 'teacher') return;
+    $('attCard').classList.add('hidden');
+    if (myAttOk) $('studentStatus').textContent = '✅ Attendance: you are marked present.';
+  });
+
+  function restoreAtt(att) {
+    if (role === 'teacher') {
+      attOn = !!att.on;
+      paintAttBtn();
+      attLogLocal = att.log || [];
+      renderAttLog();
+      if (att.open && att.list && att.list.length) renderAttLive(att.round, att.list);
+      if (att.open && att.word) {
+        $('attWord').textContent = att.word.toUpperCase();
+        $('attWordBox').classList.remove('hidden');
+      }
+    } else if (att.open) {
+      $('attCard').classList.remove('hidden');
+      if (att.answered === 'ok') {
+        myAttOk = true;
+        $('attFeedback').textContent = '✅ You are marked present. Thank you!';
+        $('attInput').disabled = true;
+        $('attSendBtn').disabled = true;
+      }
+    }
+  }
 
   const sendPrompt = throttle(() => socket.emit('set-prompt', $('promptInput').value), 300);
   $('promptInput').addEventListener('input', sendPrompt);

@@ -41,6 +41,20 @@ app.get('/requests', async (req, res) => {
 // room code -> { teacherId, prompt, board, answers: Map<socketId, {name, text, ts}> , peers: Map<socketId, {role, name}>,
 //                attOn, attTimer, attCloseTimer, attRound, attOpen,
 //                attResults: Map<socketId, {name, status, at}>, attLog: [{round, at, results}] }
+// Builder-only: clear a room registration so the teacher can claim the name
+// again with a new PIN (e.g. a test PIN was set, or she forgot hers).
+app.get('/reset-room', async (req, res) => {
+  if (req.query.key !== REQUESTS_KEY) { res.status(403).send('Wrong key.'); return; }
+  const name = cleanRoomName(req.query.room || '');
+  if (!name) { res.status(400).send('Give ?room=NAME'); return; }
+  roomRegistry.delete(name);
+  const live = rooms.get(name);
+  if (live) live.pinHash = null;
+  const p = getPgPool();
+  if (p) { try { await pgInit(); await p.query('DELETE FROM ylc_kv WHERE key = $1', ['ylc:room:' + name]); } catch (e) {} }
+  res.send('Room ' + name + ' registration cleared. The teacher can claim it again with a new PIN.');
+});
+
 const rooms = new Map();
 
 // ---- Small permanent memory (his existing Render Postgres, DATABASE_URL) ----

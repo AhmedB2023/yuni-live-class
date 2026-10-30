@@ -55,6 +55,14 @@ function closeAttRound(io, code) {
   room.attLog.push(entry);
   if (room.teacherId) io.to(room.teacherId).emit('att-closed', entry);
   io.to(code).emit('att-done', { round: room.attRound });
+  // A one-off balloon (teacher pressed "send NOW" while auto checks were off)
+  // turns the checks back off when its round ends.
+  if (room.attOnce) {
+    room.attOnce = false;
+    room.attOn = false;
+    if (room.attTimer) { clearInterval(room.attTimer); room.attTimer = null; }
+    if (room.teacherId) io.to(room.teacherId).emit('att-state', { on: false });
+  }
 }
 
 function startAttRound(io, code) {
@@ -104,6 +112,27 @@ function sendParticipants(room) {
   if (t) io.to(room.teacherId).emit('participants', participantsList(room));
 }
 
+function groupsPayload(room, forId) {
+  if (!room.groups) return { active: false, mine: null, groups: [] };
+  return {
+    active: true,
+    mine: room.groupOf.get(forId) || null,
+    groups: room.groups.map((g) => ({
+      id: g.id,
+      members: g.members.map((id) => {
+        const p = room.peers.get(id);
+        return { id, name: (p && p.name) || 'Student' };
+      }),
+    })),
+  };
+}
+
+function broadcastGroups(io, room) {
+  for (const [id] of room.peers.entries()) {
+    io.to(id).emit('groups', groupsPayload(room, id));
+  }
+}
+
 function roomStateFor(room, role, socketId) {
   const att = {
     on: room.attOn,
@@ -123,6 +152,12 @@ function roomStateFor(room, role, socketId) {
     prompt: room.prompt,
     boardSegs: room.boardSegs,
     boardBy: room.boardBy,
+    lang: room.lang,
+    drawStrokes: room.drawStrokes,
+    groups: groupsPayload(room, socketId),
+    chat: role === 'teacher'
+      ? Object.fromEntries(room.chats.entries())
+      : (room.chats.get(socketId) || []),
     participants: role === 'teacher' ? participantsList(room) : undefined,
     answers: role === 'teacher'
       ? Array.from(room.answers.entries()).map(([id, a]) => ({ id, name: a.name, text: a.text }))
@@ -155,6 +190,12 @@ io.on('connection', (socket) => {
       attEveryMs: 5 * 60 * 1000,
       attResults: new Map(),
       attLog: [],
+      attOnce: false,
+      lang: 'en',
+      drawStrokes: [],
+      chats: new Map(),
+      groups: null,
+      groupOf: new Map(),
     });
     if (typeof cb === 'function') cb({ code });
   });
@@ -310,6 +351,129 @@ io.on('connection', (socket) => {
     if (room.teacherId) io.to(room.teacherId).emit('att-status', { round: room.attRound, list: attList(room) });
   });
 
+  // ---- Hearts: anyone taps ❤️, the whole class sees the heart + their name ----
+  socket.on('react', () => {
+    if (!myRoom) return;
+    const room = rooms.get(myRoom);
+    if (!room) return;
+    const peer = room.peers.get(socket.id);
+    const name = myRole === 'teacher' ? 'Teacher' : ((peer && peer.name) || 'Student');
+    io.to(myRoom).emit('react', { name });
+  });
+
+  // ---- Private chat: student <-> teacher only, never student <-> student ----
+  socket.on('chat', ({ to, text }) => {
+    if (!myRoom) return;
+    const room = rooms.get(myRoom);
+    if (!room) return;
+    const clean = String(text || '').slice(0, 500).trim();
+    if (!clean) return;
+    const peer = room.peers.get(socket.id);
+    const myName2 = myRole === 'teacher' ? 'Teacher' : ((peer && peer.name) || 'Student');
+    if (myRole === 'student') {
+      const msg = { from: socket.id, name: myName2, text: clean, at: timeNow(), mine: false };
+      if (!room.chats.has(socket.id)) room.chats.set(socket.id, []);
+      room.chats.get(socket.id).push(msg);
+      io.to(room.teacherId).emit('chat', { thread: socket.id, msg });
+      socket.emit('chat', { thread: socket.id, msg: { ...msg, mine: true } });
+    } else {
+      const target = String(to || '');
+      if (!room.peers.has(target) || target === socket.id) return;
+      const msg = { from: socket.id, name: 'Teacher', text: clean, at: timeNow(), mine: false };
+      if (!room.chats.has(target)) room.chats.set(target, []);
+      room.chats.get(target).push(msg);
+      io.to(target).emit('chat', { thread: target, msg });
+      socket.emit('chat', { thread: target, msg: { ...msg, mine: true } });
+    }
+  });
+
+  // ---- Balloon NOW: the teacher fires a check any time she decides ----
+  socket.on('att-now', () => {
+    if (!myRoom || myRole !== 'teacher') return;
+    const room = rooms.get(myRoom);
+    if (!room) return;
+    if (room.attOn) {
+      startAttRound(io, myRoom);
+      if (room.attTimer) {
+        clearInterval(room.attTimer);
+        room.attTimer = setInterval(() => {
+          if (!rooms.has(myRoom)) return;
+          startAttRound(io, myRoom);
+        }, room.attEveryMs);
+      }
+    } else {
+      room.attOnce = true;
+      room.attOn = true;
+      startAttRound(io, myRoom);
+    }
+  });
+
+  // ---- Platform language: the teacher sets it for the whole class ----
+  socket.on('set-lang', ({ lang }) => {
+    if (!myRoom || myRole !== 'teacher') return;
+    const room = rooms.get(myRoom);
+    if (!room) return;
+    const ok = ['en', 'es', 'pt', 'fr', 'ar', 'id', 'vi', 'zh'];
+    room.lang = ok.includes(lang) ? lang : 'en';
+    io.to(myRoom).emit('lang', { lang: room.lang });
+  });
+
+  // ---- Drawing on the shared screen (teacher draws, everyone sees) ----
+  socket.on('draw-seg', (seg) => {
+    if (!myRoom || myRole !== 'teacher') return;
+    socket.to(myRoom).emit('draw-seg', seg);
+  });
+  socket.on('draw-stroke', (stroke) => {
+    if (!myRoom || myRole !== 'teacher') return;
+    const room = rooms.get(myRoom);
+    if (!room) return;
+    if (stroke && Array.isArray(stroke.pts) && stroke.pts.length) {
+      room.drawStrokes.push({ color: String(stroke.color || '#ef4444').slice(0, 12), pts: stroke.pts.slice(0, 400) });
+      if (room.drawStrokes.length > 600) room.drawStrokes.shift();
+    }
+  });
+  socket.on('draw-clear', () => {
+    if (!myRoom || myRole !== 'teacher') return;
+    const room = rooms.get(myRoom);
+    if (!room) return;
+    room.drawStrokes = [];
+    io.to(myRoom).emit('draw-clear');
+  });
+
+  // ---- Split rooms (breakout groups). The teacher stays connected to everyone,
+  // so her screen, prompt and board reach every group. ----
+  socket.on('groups-split', ({ size }) => {
+    if (!myRoom || myRole !== 'teacher') return;
+    const room = rooms.get(myRoom);
+    if (!room) return;
+    const per = [2, 3, 4].includes(parseInt(size, 10)) ? parseInt(size, 10) : 2;
+    const students = Array.from(room.peers.entries())
+      .filter(([, p]) => p.role === 'student')
+      .map(([id]) => id);
+    // Shuffle, then chunk.
+    for (let i = students.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [students[i], students[j]] = [students[j], students[i]];
+    }
+    room.groups = [];
+    room.groupOf = new Map();
+    students.forEach((id, idx) => {
+      const gi = Math.floor(idx / per);
+      if (!room.groups[gi]) room.groups[gi] = { id: 'G' + (gi + 1), members: [] };
+      room.groups[gi].members.push(id);
+      room.groupOf.set(id, room.groups[gi].id);
+    });
+    broadcastGroups(io, room);
+  });
+  socket.on('groups-end', () => {
+    if (!myRoom || myRole !== 'teacher') return;
+    const room = rooms.get(myRoom);
+    if (!room) return;
+    room.groups = null;
+    room.groupOf = new Map();
+    broadcastGroups(io, room);
+  });
+
   // ---- Attendance + media relays ----
   socket.on('stream-kind', ({ streamId, kind }) => {
     if (!myRoom) return;
@@ -337,6 +501,11 @@ io.on('connection', (socket) => {
     if (!room) return;
     const partLeft = room.participants.get(socket.id);
     if (partLeft && !partLeft.leftAt) partLeft.leftAt = Date.now();
+    if (room.groups) {
+      room.groups.forEach((g) => { g.members = g.members.filter((id) => id !== socket.id); });
+      room.groupOf.delete(socket.id);
+      broadcastGroups(io, room);
+    }
     room.peers.delete(socket.id);
     sendParticipants(room);
     room.answers.delete(socket.id);

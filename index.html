@@ -91,6 +91,45 @@
   .row .bigbtn { flex: 1; min-width: 220px; }
   #joinName { font-size: 26px; padding: 20px; }
   #codeInput { font-size: 30px; text-align: center; letter-spacing: .3em; text-transform: uppercase; }
+  /* Hearts floating over the class */
+  #reactions { position: fixed; left: 0; right: 0; bottom: 12px; display: flex; flex-direction: column; align-items: center; gap: 2px; pointer-events: none; z-index: 60; }
+  .float-heart { font-size: 30px; font-weight: 800; color: #fff; text-shadow: 0 2px 10px rgba(0,0,0,.6); animation: floatUp 3.2s ease-out forwards; }
+  @keyframes floatUp { 0% { transform: translateY(30px) scale(.7); opacity: 0; } 12% { opacity: 1; transform: translateY(0) scale(1.1); } 30% { transform: translateY(-10px) scale(1); } 100% { transform: translateY(-190px) scale(1); opacity: 0; } }
+  /* Mute button on my camera box */
+  .tile .micbtn { position: absolute; top: 6px; right: 6px; width: 40px; height: 40px; border-radius: 50%; border: none; font-size: 19px; background: rgba(0,0,0,.65); color: #fff; cursor: pointer; }
+  .tile .micbtn.live { background: #16a34a; }
+  .tile .cambtn { position: absolute; top: 6px; right: 52px; width: 40px; height: 40px; border-radius: 50%; border: none; font-size: 19px; background: rgba(0,0,0,.65); color: #fff; cursor: pointer; }
+  .tile .cambtn.live { background: #16a34a; }
+  /* Private chat panel — fixed on the RIGHT side */
+  #chatPanel { position: fixed; top: 0; right: 0; width: min(340px, 92vw); height: 100dvh; background: #111c30; border-left: 2px solid #334155; z-index: 70; display: flex; flex-direction: column; transform: translateX(105%); transition: transform .25s ease; }
+  #chatPanel.open { transform: translateX(0); }
+  #chatPanel .chat-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid #334155; font-size: 19px; font-weight: 800; }
+  #chatPanel .chat-head button { background: #334155; color: #fff; border: none; border-radius: 8px; padding: 6px 12px; font-size: 16px; cursor: pointer; }
+  #chatTabs { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 10px; border-bottom: 1px solid #334155; }
+  #chatTabs button { background: #1e293b; color: #e2e8f0; border: 1px solid #475569; border-radius: 999px; padding: 6px 12px; font-size: 15px; cursor: pointer; }
+  #chatTabs button.active { background: #2563eb; border-color: #2563eb; color: #fff; }
+  #chatMsgs { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .chat-msg { max-width: 85%; background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 8px 12px; font-size: 17px; line-height: 1.35; }
+  .chat-msg.mine { align-self: flex-end; background: #14532d; border-color: #16a34a; }
+  .chat-msg .cn { font-size: 13px; font-weight: 700; color: #93c5fd; margin-bottom: 2px; }
+  .chat-msg .ct { font-size: 12px; color: #94a3b8; margin-top: 2px; }
+  #chatPanel .chat-send { display: flex; gap: 8px; padding: 10px; border-top: 1px solid #334155; }
+  #chatPanel .chat-send input { flex: 1; font-size: 18px; padding: 12px; }
+  #chatPanel .chat-send button { background: #22c55e; color: #052e16; border: none; border-radius: 12px; padding: 0 18px; font-size: 18px; font-weight: 800; cursor: pointer; }
+  .badge { display: inline-block; min-width: 24px; text-align: center; background: #ef4444; color: #fff; border-radius: 999px; font-size: 14px; padding: 1px 6px; margin-left: 6px; }
+  /* Screen wrap + drawing canvas */
+  .screenwrap { position: relative; }
+  .screenwrap video { width: 100%; display: block; }
+  canvas.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  canvas.overlay.drawing { pointer-events: auto; cursor: crosshair; }
+  .drawbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+  .cdot { width: 38px; height: 38px; border-radius: 50%; border: 3px solid transparent; cursor: pointer; }
+  .cdot.sel { border-color: #fff; }
+  .smallbtn { padding: 12px 16px; font-size: 17px; font-weight: 700; border: none; border-radius: 12px; cursor: pointer; background: #334155; color: #e2e8f0; }
+  .smallbtn.on { background: #2563eb; color: #fff; }
+  select.langsel { font-size: 19px; padding: 12px; border-radius: 12px; background: #1e293b; color: #f8fafc; border: 2px solid #475569; width: 100%; }
+  #groupBanner { background: #7c2d12; border: 1px solid #ea580c; color: #ffedd5; border-radius: 12px; padding: 12px 16px; font-size: 19px; font-weight: 700; margin: 12px 0; }
+  .rec-dot { color: #ef4444; }
 </style>
 </head>
 <body>
@@ -98,39 +137,44 @@
 
   <!-- ============ HOME ============ -->
   <section id="homeView">
-    <h1>Live Class</h1>
-    <p class="sub">One link is the whole classroom. No accounts, no settings for students.</p>
-    <button class="bigbtn green" id="teacherBtn">👩‍🏫 I am the teacher — start a class</button>
+    <h1 data-i18n="homeTitle">Live Class</h1>
+    <p class="sub" data-i18n="homeSub">One link is the whole classroom. No accounts, no settings for students.</p>
+    <button class="bigbtn green" id="teacherBtn" data-i18n="iAmTeacher">👩‍🏫 I am the teacher — start a class</button>
     <div class="card">
-      <div class="label">I am a student — type the class code</div>
+      <div class="label" data-i18n="studentCodeLabel">I am a student — type the class code</div>
       <input type="text" id="codeInput" maxlength="5" placeholder="ABCDE" autocomplete="off">
-      <button class="bigbtn blue" id="studentBtn">Join class</button>
+      <button class="bigbtn blue" id="studentBtn" data-i18n="joinClass">Join class</button>
     </div>
     <p class="sub">Students: your teacher will send you a link. Tap the link — that is all.</p>
   </section>
 
   <!-- ============ STUDENT: NAME ============ -->
   <section id="nameView" class="hidden">
-    <h1>Welcome 👋</h1>
-    <p class="sub">Write your name, then tap the big green button.</p>
+    <h1 data-i18n="nameTitle">Welcome 👋</h1>
+    <p class="sub" data-i18n="nameSub">Write your name, then tap the big green button.</p>
     <input type="text" id="joinName" placeholder="Your name" autocomplete="name">
-    <button class="bigbtn green" id="enterBtn">Enter class ✅</button>
+    <button class="bigbtn green" id="enterBtn" data-i18n="enterClass">Enter class ✅</button>
   </section>
 
   <!-- ============ STUDENT: CLASS ============ -->
   <section id="studentView" class="hidden">
+    <button class="bigbtn blue" id="soundBtnS">🔊 Tap here for sound</button>
+    <div id="groupBanner" class="hidden"></div>
     <div class="faces" id="facesStudent"></div>
     <div class="card">
-      <div class="label">Teacher's screen</div>
-      <video id="screenVideo" autoplay playsinline></video>
+      <div class="label" data-i18n="teacherScreen">Teacher's screen</div>
+      <div class="screenwrap">
+        <video id="screenVideo" autoplay playsinline></video>
+        <canvas class="overlay" id="drawCanvasS"></canvas>
+      </div>
       <p class="status" id="screenStatus">Waiting for the teacher to share her screen…</p>
     </div>
     <div class="card">
-      <div class="label">Your teacher says</div>
+      <div class="label" data-i18n="teacherSays">Your teacher says</div>
       <div id="promptView">…</div>
     </div>
     <div class="card">
-      <div class="label">🤝 Class whiteboard — your name goes before your words</div>
+      <div class="label" data-i18n="boardLabel">🤝 Class whiteboard — your name goes before your words</div>
       <div class="board-page2">
         <div id="boardHistoryS"></div>
         <div class="myseg">
@@ -141,21 +185,34 @@
       <p class="board-by" id="boardByS"></p>
     </div>
     <div class="card">
-      <div class="label">✍️ Write your answer here</div>
-      <textarea id="answerBox" placeholder="Type here… your teacher sees it right away"></textarea>
+      <div class="label" data-i18n="answerLabel">✍️ Write your answer here</div>
+      <textarea id="answerBox" data-i18n-ph="answerPh" placeholder="Type here… your teacher sees it right away"></textarea>
     </div>
     <div class="row">
-      <button class="bigbtn gray" id="micBtn">🎤 Tap to speak</button>
-      <button class="bigbtn gray" id="camBtn">📷 Show my face</button>
+      <button class="bigbtn" id="heartBtnS" style="background:#ec4899;color:#fff;">❤️ Send a heart</button>
+      <button class="bigbtn gray" id="chatBtnS">💬 Message your teacher<span class="badge hidden" id="chatBadgeS">0</span></button>
     </div>
     <p class="status" id="studentStatus"></p>
   </section>
 
   <!-- ============ TEACHER ============ -->
   <section id="teacherView" class="hidden">
-    <h1>Your class is live 🎉</h1>
+    <h1 data-i18n="classLive">Your class is live 🎉</h1>
     <div class="card">
-      <div class="label">Send this link to your students</div>
+      <div class="label" data-i18n="langLabel">🌐 Class language (for everyone)</div>
+      <select class="langsel" id="langSel">
+        <option value="en">English (default)</option>
+        <option value="es">Español</option>
+        <option value="pt">Português</option>
+        <option value="fr">Français</option>
+        <option value="ar">العربية</option>
+        <option value="id">Bahasa Indonesia</option>
+        <option value="vi">Tiếng Việt</option>
+        <option value="zh">中文</option>
+      </select>
+    </div>
+    <div class="card">
+      <div class="label" data-i18n="sendLink">Send this link to your students</div>
       <div class="linkbox">
         <input type="text" id="studentLink" readonly>
         <button id="copyBtn">Copy</button>
@@ -167,18 +224,39 @@
       <button class="bigbtn gray" id="teacherMicBtn">🎤 2. Turn my microphone on</button>
       <button class="bigbtn gray" id="teacherCamBtn">📷 3. Turn my camera on</button>
     </div>
+    <div class="row">
+      <button class="bigbtn gray" id="recBtn">⏺ Record lesson</button>
+      <button class="bigbtn gray" id="soundBtnT">🔊 Sound on</button>
+    </div>
+    <div class="row">
+      <button class="bigbtn" id="heartBtnT" style="background:#ec4899;color:#fff;">❤️ Send a heart</button>
+      <button class="bigbtn gray" id="chatBtnT">💬 Private messages<span class="badge hidden" id="chatBadgeT">0</span></button>
+    </div>
     <p class="status" id="teacherStatus"></p>
     <div class="faces" id="facesTeacher"></div>
     <div class="card">
-      <div class="label">My screen (only you see this preview)</div>
-      <video id="teacherPreview" autoplay playsinline muted style="width:100%;border-radius:12px;background:#000;"></video>
+      <div class="label" data-i18n="myScreen">My screen (only you see this preview)</div>
+      <div class="screenwrap">
+        <video id="teacherPreview" autoplay playsinline muted style="width:100%;border-radius:12px;background:#000;"></video>
+        <canvas class="overlay" id="drawCanvasT"></canvas>
+      </div>
+      <div class="drawbar">
+        <button class="smallbtn" id="drawBtn">✏️ Draw on my screen: OFF</button>
+        <span class="cdot sel" data-color="#ef4444" style="background:#ef4444;"></span>
+        <span class="cdot" data-color="#facc15" style="background:#facc15;"></span>
+        <span class="cdot" data-color="#22c55e" style="background:#22c55e;"></span>
+        <span class="cdot" data-color="#38bdf8" style="background:#38bdf8;"></span>
+        <span class="cdot" data-color="#e879f9" style="background:#e879f9;"></span>
+        <button class="smallbtn" id="drawClearBtn">🧹 Clear drawing</button>
+      </div>
+      <p class="sub" style="margin-top:8px;" data-i18n="drawHint">Turn drawing ON, pick a color, and write on your shared screen — students see it live.</p>
     </div>
     <div class="card">
-      <div class="label">Say or ask (students see this big)</div>
+      <div class="label" data-i18n="sayAsk">Say or ask (students see this big)</div>
       <textarea id="promptInput" rows="2" placeholder="Example: Write the sentence: I ___ to the store yesterday."></textarea>
     </div>
     <div class="card">
-      <div class="label">🤝 Class whiteboard — your name goes before your words</div>
+      <div class="label" data-i18n="boardLabel">🤝 Class whiteboard — your name goes before your words</div>
       <div class="board-page2">
         <div id="boardHistoryT"></div>
         <div class="myseg">
@@ -189,7 +267,7 @@
       <p class="board-by" id="boardByT"></p>
     </div>
     <div class="card">
-      <div class="label">✅ Attendance check — the pink balloon</div>
+      <div class="label" data-i18n="attTitle">✅ Attendance check — the pink balloon</div>
       <p class="sub">Students with their <b>camera ON</b> are marked present by their camera. Students with <b>camera OFF</b> get a pink balloon 🎈 on their phone — one tap = present. No tap in 1 minute = not marked.</p>
       <div class="label">Balloon check every — tap one</div>
       <div class="row" id="attMinutesRow">
@@ -198,25 +276,51 @@
         <button class="bigbtn gray att-min" data-min="15">15 min</button>
       </div>
       <button class="bigbtn green" id="attBtn">Start attendance checks</button>
+      <button class="bigbtn" id="attNowBtn" style="background:#ec4899;color:#fff;">🎈 Send the balloon NOW</button>
       <div id="attLive"></div>
       <div id="attLogView"></div>
       <button class="bigbtn gray hidden" id="attSaveBtn" style="margin-top:14px;">💾 Save attendance record</button>
     </div>
     <div class="card">
-      <div class="label">👥 Participants in this class</div>
+      <div class="label" data-i18n="participants">👥 Participants in this class</div>
       <p class="sub" id="participantsView" style="white-space:pre-line;">No students yet.</p>
       <button class="bigbtn gray hidden" id="partSaveBtn" style="margin-top:10px;">💾 Save participants report</button>
     </div>
     <div class="card">
-      <div class="label">Student answers — live</div>
+      <div class="label" data-i18n="groupsTitle">🧩 Split rooms (small groups)</div>
+      <p class="sub" data-i18n="groupsDesc">Split students into small groups. They hear only their group. Your screen, board and messages still reach every group.</p>
+      <div class="row">
+        <button class="bigbtn gray grp-split" data-size="2">Pairs (2)</button>
+        <button class="bigbtn gray grp-split" data-size="3">Groups of 3</button>
+        <button class="bigbtn gray grp-split" data-size="4">Groups of 4</button>
+      </div>
+      <button class="bigbtn red" id="groupsEndBtn">Bring everyone back</button>
+      <div id="groupsList" style="margin-top:10px;"></div>
+    </div>
+    <div class="card">
+      <div class="label" data-i18n="answersLabel">Student answers — live</div>
       <div class="answers" id="answersGrid">
         <div class="answer-card empty"><div class="what">No answers yet. When a student types, it appears here right away.</div></div>
       </div>
-      <button class="bigbtn red" id="clearBtn" style="margin-top:14px;">Clear all answers</button>
+      <button class="bigbtn red" id="clearBtn" style="margin-top:14px;" data-i18n="clearAnswers">Clear all answers</button>
     </div>
   </section>
 
 </div>
+
+<!-- Reactions float over everything -->
+<div id="reactions"></div>
+
+<!-- Private chat — fixed panel on the RIGHT side -->
+<aside id="chatPanel">
+  <div class="chat-head"><span id="chatTitle">💬 Messages</span><button id="chatClose">✕</button></div>
+  <div id="chatTabs" class="hidden"></div>
+  <div id="chatMsgs"></div>
+  <div class="chat-send">
+    <input type="text" id="chatInput" placeholder="Write a private message…">
+    <button id="chatSend">Send</button>
+  </div>
+</aside>
 
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script>
@@ -251,6 +355,7 @@
     };
     return [
       { slot: 'screen', track: pick(screenStream, 'video'), stream: screenStream },
+      { slot: 'screenAudio', track: pick(screenStream, 'audio'), stream: screenStream },
       { slot: 'camera', track: pick(camStream, 'video'), stream: camStream },
       { slot: 'audio', track: pick(micStream, 'audio'), stream: micStream },
     ];
@@ -298,7 +403,15 @@
     const n = document.createElement('div');
     n.className = 'n';
     n.textContent = label || '';
-    tile.appendChild(plate); tile.appendChild(v); tile.appendChild(bl); tile.appendChild(n);
+    const mb = document.createElement('button');
+    mb.className = 'micbtn hidden';
+    mb.textContent = '🎤';
+    mb.title = 'Speak / mute';
+    const cb2 = document.createElement('button');
+    cb2.className = 'cambtn hidden';
+    cb2.textContent = '📷';
+    cb2.title = 'Show / hide my face';
+    tile.appendChild(plate); tile.appendChild(v); tile.appendChild(bl); tile.appendChild(n); tile.appendChild(mb); tile.appendChild(cb2);
     facesEl().appendChild(tile);
     return tile;
   }
@@ -311,6 +424,8 @@
       video: tile.querySelector('video'),
       balloonLayer: tile.querySelector('.balloon-layer'),
       balloon: tile.querySelector('.balloon'),
+      micBtn: tile.querySelector('.micbtn'),
+      camBtn: tile.querySelector('.cambtn'),
     };
   }
   function tileShowBalloon(id) {
@@ -400,6 +515,19 @@
       document.body.appendChild(el);
     }
     el.srcObject = stream;
+    el.play().catch(() => {});
+  }
+
+  // Browsers block sound until the person taps once. This one tap unlocks
+  // every voice, the shared screen's sound, and the camera boxes.
+  function unlockSound() {
+    document.querySelectorAll('audio').forEach((el) => { el.play().catch(() => {}); });
+    document.querySelectorAll('video').forEach((el) => {
+      if (el.id === 'teacherPreview') return;
+      el.play().catch(() => {});
+    });
+    const s1 = $('soundBtnS'); if (s1) s1.textContent = '🔊 Sound is ON ✅';
+    const s2 = $('soundBtnT'); if (s2) s2.textContent = '🔊 Sound is ON ✅';
   }
   function routeRemote(peerId, stream) {
     const key = peerId + ':' + stream.id;
@@ -427,6 +555,7 @@
       if (role !== 'teacher') {
         $('screenVideo').srcObject = stream;
         $('screenStatus').textContent = 'You are watching your teacher\'s screen.';
+        setTimeout(() => { fitCanvas($('drawCanvasS'), $('screenVideo')); redrawStrokes(); }, 400);
       }
       return;
     }
@@ -446,11 +575,15 @@
 
   socket.on('existing-peers', (list) => list.forEach(({ id, name, role: peerRole }) => {
     peerNames.set(id, name || (peerRole === 'teacher' ? 'Teacher' : ''));
+    peerRoles.set(id, peerRole);
+    if (!peerAllowed(id)) return;
     ensureTile(id, peerNames.get(id) || (role === 'teacher' ? 'Student' : 'Class'));
     makePeer(id);
   }));
   socket.on('peer-joined', ({ id, name, role: peerRole }) => {
     peerNames.set(id, name || (peerRole === 'teacher' ? 'Teacher' : ''));
+    peerRoles.set(id, peerRole);
+    if (!peerAllowed(id)) return;
     ensureTile(id, peerNames.get(id) || (role === 'teacher' ? 'Student' : 'Class'));
     makePeer(id);
   });
@@ -463,6 +596,7 @@
   });
 
   socket.on('rtc-offer', async ({ from, sdp }) => {
+    if (!peerAllowed(from)) return;
     const state = makePeer(from);
     const pc = state.pc;
     const collision = state.makingOffer || pc.signalingState !== 'stable';
@@ -486,7 +620,23 @@
   });
 
   // ---------- Board / prompt / answers ----------
-  socket.on('prompt', (text) => { if (role !== 'teacher') $('promptView').textContent = text || '…'; });
+  function linkifyInto(el, text) {
+    el.innerHTML = '';
+    String(text || '').split(/(https?:\/\/[^\s]+|www\.[^\s]+)/g).forEach((part) => {
+      if (/^(https?:\/\/|www\.)/.test(part)) {
+        const a = document.createElement('a');
+        a.href = part.startsWith('www.') ? 'https://' + part : part;
+        a.textContent = part;
+        a.target = '_blank'; a.rel = 'noopener';
+        a.style.color = '#38bdf8'; a.style.textDecoration = 'underline';
+        a.style.pointerEvents = 'auto';
+        el.appendChild(a);
+      } else if (part) {
+        el.appendChild(document.createTextNode(part));
+      }
+    });
+  }
+  socket.on('prompt', (text) => { if (role !== 'teacher') linkifyInto($('promptView'), text || '…'); });
 
   // ---- Whiteboard: a page of NAMED pieces. My typing box is fixed on the page
   // and is NEVER rewritten by anyone's updates — that keeps typing smooth.
@@ -539,13 +689,20 @@
   }, 300);
   socket.on('room-state', (state) => {
     if (role !== 'teacher') {
-      $('promptView').textContent = state.prompt || '…';
+      linkifyInto($('promptView'), state.prompt || '…');
     } else {
       state.answers.forEach((a) => renderAnswer(a.id, a.name, a.text));
     }
     handleSegs(state.boardSegs || [], state.boardBy);
     if (state.participants) setParticipants(state.participants);
     if (state.att) restoreAtt(state.att);
+    if (state.chat) {
+      if (role === 'teacher') Object.entries(state.chat).forEach(([tid, arr]) => chatThreads.set(tid, arr));
+      else chatThreads.set(socket.id, state.chat);
+    }
+    if (state.drawStrokes) { myStrokes = state.drawStrokes; setTimeout(redrawStrokes, 400); }
+    applyLanguage(state.lang || 'en');
+    applyGroups(state.groups);
   });
 
   const answerCards = new Map();
@@ -597,10 +754,12 @@
         $('roomCodeLabel').textContent = roomCode;
         $('studentLink').value = location.origin + location.pathname + '?room=' + roomCode;
         ensureTile('me', 'Teacher');
+        wireMyTile();
       } else {
         show('studentView');
         $('boardMineLabelS').textContent = (myName || 'You') + ' (you):';
         ensureTile('me', myName || 'You');
+        wireMyTile();
         const myBalloon = tileLayers('me').balloon;
         myBalloon.addEventListener('click', () => {
           if (!attOpenMine || myAttOk) return;
@@ -646,25 +805,80 @@
   }, 300);
   $('answerBox').addEventListener('input', sendAnswer);
 
-  $('micBtn').addEventListener('click', async () => {
+  // ---------- Mic + camera live INSIDE my own box (Zoom-style) ----------
+  function statusEl() { return role === 'teacher' ? $('teacherStatus') : $('studentStatus'); }
+  function paintMic() {
+    const L = tileLayers('me');
+    const track = micStream && micStream.getAudioTracks()[0];
+    const live = !!(track && track.enabled);
+    if (L && L.micBtn) {
+      L.micBtn.classList.toggle('live', live);
+      L.micBtn.textContent = !micStream ? '🎤' : (live ? '🎤' : '🔇');
+    }
+    if (role === 'teacher' && $('teacherMicBtn')) {
+      $('teacherMicBtn').textContent = !micStream ? '🎤 2. Turn my microphone on'
+        : (live ? '🔴 Microphone is ON — tap to mute' : '🔇 Muted — tap to speak');
+      $('teacherMicBtn').classList.toggle('mic-on', live);
+    }
+  }
+  async function toggleMic() {
     if (micStream) {
-      micStream.getTracks().forEach((t) => t.stop());
-      micStream = null;
-      rebuildLocalStream();
-      $('micBtn').textContent = '🎤 Tap to speak';
-      $('micBtn').classList.remove('mic-on');
+      const t = micStream.getAudioTracks()[0];
+      if (t) t.enabled = !t.enabled;
+      paintMic();
       return;
     }
     try {
       micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       announceKind(micStream, 'audio');
       rebuildLocalStream();
-      $('micBtn').textContent = '🔴 You are speaking — tap to stop';
-      $('micBtn').classList.add('mic-on');
+      paintMic();
     } catch (e) {
-      $('studentStatus').textContent = 'The microphone is blocked. Allow the microphone in your browser, then tap again.';
+      statusEl().textContent = 'The microphone is blocked. Allow the microphone in your browser, then tap again.';
     }
-  });
+  }
+  function paintCam() {
+    const L = tileLayers('me');
+    if (L && L.camBtn) {
+      L.camBtn.classList.toggle('live', !!camStream);
+      L.camBtn.textContent = camStream ? '🔴' : '📷';
+    }
+    if (role === 'teacher' && $('teacherCamBtn')) {
+      $('teacherCamBtn').textContent = camStream ? '🔴 Camera is ON — tap to turn off' : '📷 3. Turn my camera on';
+      $('teacherCamBtn').classList.toggle('mic-on', !!camStream);
+    }
+  }
+  async function toggleCameraMine() {
+    if (camStream) {
+      camStream.getTracks().forEach((t) => t.stop());
+      camStream = null;
+      rebuildLocalStream();
+      clearTileVideo('me');
+      socket.emit('media-off', { kind: 'camera' });
+      socket.emit('cam-state', { on: false });
+      paintCam();
+      return;
+    }
+    try {
+      camStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      announceKind(camStream, 'camera');
+      rebuildLocalStream();
+      setTileVideo('me', camStream, true);
+      socket.emit('cam-state', { on: true });
+      paintCam();
+    } catch (e) {
+      statusEl().textContent = 'The camera is blocked. Allow the camera in your browser, then tap again.';
+    }
+  }
+  function wireMyTile() {
+    const L = tileLayers('me');
+    if (!L) return;
+    if (L.micBtn) { L.micBtn.classList.remove('hidden'); L.micBtn.addEventListener('click', toggleMic); }
+    if (L.camBtn) { L.camBtn.classList.remove('hidden'); L.camBtn.addEventListener('click', toggleCameraMine); }
+    paintMic(); paintCam();
+  }
+  if ($('soundBtnS')) $('soundBtnS').addEventListener('click', unlockSound);
+  if ($('soundBtnT')) $('soundBtnT').addEventListener('click', unlockSound);
 
   // ---------- Teacher flow ----------
   if (role === 'teacher' && roomCode) {
@@ -683,6 +897,7 @@
       screenStream.getTracks().forEach((t) => t.stop());
       screenStream = null;
       rebuildLocalStream();
+      myStrokes = []; socket.emit('draw-clear');
       socket.emit('media-off', { kind: 'screen' });
       $('teacherPreview').srcObject = null;
       $('shareBtn').textContent = '🖥️ 1. Share my screen';
@@ -690,11 +905,12 @@
       return;
     }
     try {
-      screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
       announceKind(screenStream, 'screen');
       screenStream.getVideoTracks()[0].addEventListener('ended', () => {
         screenStream = null;
         rebuildLocalStream();
+        myStrokes = []; socket.emit('draw-clear');
         socket.emit('media-off', { kind: 'screen' });
         $('shareBtn').textContent = '🖥️ 1. Share my screen';
       });
@@ -707,53 +923,9 @@
     }
   });
 
-  $('teacherMicBtn').addEventListener('click', async () => {
-    if (micStream) {
-      micStream.getTracks().forEach((t) => t.stop());
-      micStream = null;
-      rebuildLocalStream();
-      $('teacherMicBtn').textContent = '🎤 2. Turn my microphone on';
-      $('teacherMicBtn').classList.remove('mic-on');
-      return;
-    }
-    try {
-      micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      announceKind(micStream, 'audio');
-      rebuildLocalStream();
-      $('teacherMicBtn').textContent = '🔴 Microphone is ON — tap to mute';
-      $('teacherMicBtn').classList.add('mic-on');
-    } catch (e) {
-      $('teacherStatus').textContent = 'The microphone is blocked. Allow it in your browser, then tap again.';
-    }
-  });
+  $('teacherMicBtn').addEventListener('click', toggleMic);
 
-  // ---------- Camera: everyone can show their face ----------
-  async function toggleCamera(btn, offLabel, onLabel, statusEl) {
-    if (camStream) {
-      camStream.getTracks().forEach((t) => t.stop());
-      camStream = null;
-      rebuildLocalStream();
-      clearTileVideo('me');
-      socket.emit('media-off', { kind: 'camera' });
-      socket.emit('cam-state', { on: false });
-      btn.textContent = offLabel;
-      btn.classList.remove('mic-on');
-      return;
-    }
-    try {
-      camStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-      announceKind(camStream, 'camera');
-      rebuildLocalStream();
-      setTileVideo('me', camStream, true);
-      socket.emit('cam-state', { on: true });
-      btn.textContent = onLabel;
-      btn.classList.add('mic-on');
-    } catch (e) {
-      statusEl.textContent = 'The camera is blocked. Allow the camera in your browser, then tap again.';
-    }
-  }
-  $('camBtn').addEventListener('click', () => toggleCamera($('camBtn'), '📷 Show my face', '🔴 Your face is ON — tap to hide', $('studentStatus')));
-  $('teacherCamBtn').addEventListener('click', () => toggleCamera($('teacherCamBtn'), '📷 3. Turn my camera on', '🔴 Camera is ON — tap to turn off', $('teacherStatus')));
+  $('teacherCamBtn').addEventListener('click', toggleCameraMine);
 
   // ---------- Attendance check ----------
   let attOn = false;
@@ -761,9 +933,9 @@
   let myAttOk = false;
 
   function attRowText(r) {
-    if (r.status === 'ok') return '✅ ' + r.name + ' — present, balloon 🎈 (' + r.at + ')';
-    if (r.status === 'camera') return '✅ ' + r.name + ' — present, camera 📷 (' + r.at + ')';
-    return '⏳ ' + r.name + ' — no tap yet…';
+    if (r.status === 'ok') return '✅ ' + r.name + ' — ' + t('presentBalloon') + ' (' + r.at + ')';
+    if (r.status === 'camera') return '✅ ' + r.name + ' — ' + t('presentCamera') + ' (' + r.at + ')';
+    return '⏳ ' + r.name + ' — ' + t('noTapYet');
   }
   function attRowsInto(box, list) {
     list.forEach((r) => {
@@ -795,7 +967,7 @@
     $('attSaveBtn').classList.toggle('hidden', attLogLocal.length === 0);
   }
   function paintAttBtn() {
-    $('attBtn').textContent = attOn ? '🛑 Stop attendance checks' : 'Start attendance checks';
+    $('attBtn').textContent = attOn ? t('stopChecks') : t('startChecks');
     $('attBtn').className = 'bigbtn ' + (attOn ? 'red' : 'green');
   }
 
@@ -897,14 +1069,14 @@
     myAttOk = false;
     attOpenMine = true;
     tileShowBalloon('me');
-    $('studentStatus').textContent = '🎈 Attendance check — tap the pink balloon in your box!';
+    $('studentStatus').textContent = t('balloonTap');
   });
   socket.on('att-feedback', ({ ok }) => {
     if (ok) {
       myAttOk = true;
       attOpenMine = false;
       tileShowPresent('me');
-      $('studentStatus').textContent = '✅ You are marked present. Thank you!';
+      $('studentStatus').textContent = t('markedPresent');
     }
   });
   socket.on('att-done', () => {
@@ -927,7 +1099,7 @@
     } else if (att.open) {
       attOpenMine = true;
       tileShowBalloon('me');
-      $('studentStatus').textContent = '🎈 Attendance check — tap the pink balloon in your box!';
+      $('studentStatus').textContent = t('balloonTap');
     }
   }
 
@@ -935,6 +1107,321 @@
   $('promptInput').addEventListener('input', sendPrompt);
   $('boardMineT').addEventListener('input', sendBoardMine);
   $('boardMineS').addEventListener('input', sendBoardMine);
+
+  // ================= FEATURES: hearts, chat, recording, drawing, language, groups =================
+  const STRINGS = {
+    en: { homeTitle: 'Live Class', homeSub: 'One link is the whole classroom. No accounts, no settings for students.', iAmTeacher: '👩‍🏫 I am the teacher — start a class', studentCodeLabel: 'I am a student — type the class code', joinClass: 'Join class', nameTitle: 'Welcome 👋', nameSub: 'Write your name, then tap the big green button.', enterClass: 'Enter class ✅', teacherScreen: "Teacher's screen", teacherSays: 'Your teacher says', boardLabel: '🤝 Class whiteboard — your name goes before your words', answerLabel: '✍️ Write your answer here', answerPh: 'Type here… your teacher sees it right away', sayAsk: 'Say or ask (students see this big)', attTitle: '✅ Attendance check — the pink balloon', participants: '👥 Participants in this class', answersLabel: 'Student answers — live', clearAnswers: 'Clear all answers', classLive: 'Your class is live 🎉', langLabel: '🌐 Class language (for everyone)', sendLink: 'Send this link to your students', myScreen: 'My screen (only you see this preview)', drawHint: 'Turn drawing ON, pick a color, and write on your shared screen — students see it live.', groupsTitle: '🧩 Split rooms (small groups)', groupsDesc: 'Split students into small groups. They hear only their group. Your screen, board and messages still reach every group.', presentBalloon: 'present, balloon 🎈', presentCamera: 'present, camera 📷', noTapYet: 'no tap yet…', startChecks: 'Start attendance checks', stopChecks: '🛑 Stop attendance checks', balloonTap: '🎈 Attendance check — tap the pink balloon in your box!', markedPresent: '✅ You are marked present. Thank you!', chatTitleS: '💬 Message your teacher', chatTitleT: '💬 Private messages', sendBtn: 'Send', chatPh: 'Write a private message…', groupWord: 'Group', youAreIn: 'You are in', withWord: 'with', noSplit: 'No split right now — everyone is together.' },
+    es: { homeTitle: 'Clase en vivo', homeSub: 'Un enlace es todo el salón. Sin cuentas, sin ajustes para los estudiantes.', iAmTeacher: '👩‍🏫 Soy la profesora — empezar una clase', studentCodeLabel: 'Soy estudiante — escribe el código de la clase', joinClass: 'Entrar a la clase', nameTitle: 'Bienvenido 👋', nameSub: 'Escribe tu nombre y toca el botón verde grande.', enterClass: 'Entrar a la clase ✅', teacherScreen: 'Pantalla de la profesora', teacherSays: 'Tu profesora dice', boardLabel: '🤝 Pizarra de la clase — tu nombre va antes de tus palabras', answerLabel: '✍️ Escribe tu respuesta aquí', answerPh: 'Escribe aquí… tu profesora lo ve enseguida', sayAsk: 'Di o pregunta (los estudiantes lo ven grande)', attTitle: '✅ Asistencia — el globo rosa', participants: '👥 Participantes en esta clase', answersLabel: 'Respuestas de los estudiantes — en vivo', clearAnswers: 'Borrar todas las respuestas', classLive: 'Tu clase está en vivo 🎉', langLabel: '🌐 Idioma de la clase (para todos)', sendLink: 'Envía este enlace a tus estudiantes', myScreen: 'Mi pantalla (solo tú ves esta vista)', drawHint: 'Activa el dibujo, elige un color y escribe en tu pantalla compartida — los estudiantes lo ven en vivo.', groupsTitle: '🧩 Salas separadas (grupos pequeños)', groupsDesc: 'Divide a los estudiantes en grupos pequeños. Solo escuchan a su grupo. Tu pantalla, pizarra y mensajes llegan a todos los grupos.', presentBalloon: 'presente, globo 🎈', presentCamera: 'presente, cámara 📷', noTapYet: 'aún no tocó…', startChecks: 'Empezar la asistencia', stopChecks: '🛑 Detener la asistencia', balloonTap: '🎈 Asistencia — ¡toca el globo rosa en tu casilla!', markedPresent: '✅ Estás marcado presente. ¡Gracias!', chatTitleS: '💬 Mensaje a tu profesora', chatTitleT: '💬 Mensajes privados', sendBtn: 'Enviar', chatPh: 'Escribe un mensaje privado…', groupWord: 'Grupo', youAreIn: 'Estás en el', withWord: 'con', noSplit: 'Sin separación ahora — todos juntos.' },
+    pt: { homeTitle: 'Aula ao vivo', homeSub: 'Um link é toda a sala de aula. Sem contas, sem configurações para os alunos.', iAmTeacher: '👩‍🏫 Sou a professora — começar uma aula', studentCodeLabel: 'Sou aluno — digite o código da aula', joinClass: 'Entrar na aula', nameTitle: 'Bem-vindo 👋', nameSub: 'Escreva seu nome e toque no botão verde grande.', enterClass: 'Entrar na aula ✅', teacherScreen: 'Tela da professora', teacherSays: 'Sua professora diz', boardLabel: '🤝 Quadro da turma — seu nome vem antes das suas palavras', answerLabel: '✍️ Escreva sua resposta aqui', answerPh: 'Digite aqui… sua professora vê na hora', sayAsk: 'Diga ou pergunte (os alunos veem grande)', attTitle: '✅ Presença — o balão rosa', participants: '👥 Participantes desta aula', answersLabel: 'Respostas dos alunos — ao vivo', clearAnswers: 'Apagar todas as respostas', classLive: 'Sua aula está ao vivo 🎉', langLabel: '🌐 Idioma da aula (para todos)', sendLink: 'Envie este link aos seus alunos', myScreen: 'Minha tela (só você vê esta prévia)', drawHint: 'Ative o desenho, escolha uma cor e escreva na sua tela compartilhada — os alunos veem ao vivo.', groupsTitle: '🧩 Salas separadas (grupos pequenos)', groupsDesc: 'Divida os alunos em grupos pequenos. Eles ouvem só o seu grupo. Sua tela, quadro e mensagens chegam a todos os grupos.', presentBalloon: 'presente, balão 🎈', presentCamera: 'presente, câmera 📷', noTapYet: 'ainda não tocou…', startChecks: 'Começar a presença', stopChecks: '🛑 Parar a presença', balloonTap: '🎈 Presença — toque no balão rosa na sua caixa!', markedPresent: '✅ Você está marcado presente. Obrigado!', chatTitleS: '💬 Mensagem para sua professora', chatTitleT: '💬 Mensagens privadas', sendBtn: 'Enviar', chatPh: 'Escreva uma mensagem privada…', groupWord: 'Grupo', youAreIn: 'Você está no', withWord: 'com', noSplit: 'Sem separação agora — todos juntos.' },
+    fr: { homeTitle: 'Classe en direct', homeSub: 'Un lien = toute la classe. Pas de comptes, pas de réglages pour les élèves.', iAmTeacher: '👩‍🏫 Je suis la professeure — commencer une classe', studentCodeLabel: 'Je suis élève — tapez le code de la classe', joinClass: 'Entrer dans la classe', nameTitle: 'Bienvenue 👋', nameSub: 'Écrivez votre nom, puis touchez le grand bouton vert.', enterClass: 'Entrer dans la classe ✅', teacherScreen: 'Écran de la professeure', teacherSays: 'Votre professeure dit', boardLabel: '🤝 Tableau de la classe — votre nom avant vos mots', answerLabel: '✍️ Écrivez votre réponse ici', answerPh: 'Écrivez ici… votre professeure le voit tout de suite', sayAsk: 'Dites ou demandez (les élèves le voient en grand)', attTitle: '✅ Présence — le ballon rose', participants: '👥 Participants de cette classe', answersLabel: 'Réponses des élèves — en direct', clearAnswers: 'Effacer toutes les réponses', classLive: 'Votre classe est en direct 🎉', langLabel: '🌐 Langue de la classe (pour tout le monde)', sendLink: 'Envoyez ce lien à vos élèves', myScreen: 'Mon écran (vous seul voyez cet aperçu)', drawHint: 'Activez le dessin, choisissez une couleur et écrivez sur votre écran partagé — les élèves le voient en direct.', groupsTitle: '🧩 Salles séparées (petits groupes)', groupsDesc: 'Divisez les élèves en petits groupes. Ils entendent seulement leur groupe. Votre écran, tableau et messages atteignent chaque groupe.', presentBalloon: 'présent, ballon 🎈', presentCamera: 'présent, caméra 📷', noTapYet: 'pas encore touché…', startChecks: 'Commencer les présences', stopChecks: '🛑 Arrêter les présences', balloonTap: '🎈 Présence — touchez le ballon rose dans votre case !', markedPresent: '✅ Vous êtes marqué présent. Merci !', chatTitleS: '💬 Message à votre professeure', chatTitleT: '💬 Messages privés', sendBtn: 'Envoyer', chatPh: 'Écrivez un message privé…', groupWord: 'Groupe', youAreIn: 'Vous êtes dans le', withWord: 'avec', noSplit: 'Pas de séparation — tout le monde ensemble.' },
+    ar: { homeTitle: 'حصة مباشرة', homeSub: 'رابط واحد هو كل الفصل. بدون حسابات وبدون إعدادات للطلاب.', iAmTeacher: '👩‍🏫 أنا المعلمة — بدء الحصة', studentCodeLabel: 'أنا طالب — اكتب رمز الحصة', joinClass: 'ادخل الحصة', nameTitle: 'مرحبًا 👋', nameSub: 'اكتب اسمك ثم اضغط الزر الأخضر الكبير.', enterClass: 'ادخل الحصة ✅', teacherScreen: 'شاشة المعلمة', teacherSays: 'المعلمة تقول', boardLabel: '🤝 سبورة الفصل — اسمك قبل كلامك', answerLabel: '✍️ اكتب إجابتك هنا', answerPh: 'اكتب هنا… المعلمة تراها فورًا', sayAsk: 'قولي أو اسألي (الطلاب يرونها كبيرة)', attTitle: '✅ الحضور — البالون الوردي', participants: '👥 المشاركون في هذه الحصة', answersLabel: 'إجابات الطلاب — مباشرة', clearAnswers: 'مسح كل الإجابات', classLive: 'حصتك مباشرة الآن 🎉', langLabel: '🌐 لغة الحصة (للجميع)', sendLink: 'أرسلي هذا الرابط إلى طلابك', myScreen: 'شاشتي (أنت وحدك ترين هذه المعاينة)', drawHint: 'شغّلي الرسم، اختاري لونًا، واكتبي على شاشتك المشتركة — الطلاب يرون ذلك مباشرة.', groupsTitle: '🧩 غرف منفصلة (مجموعات صغيرة)', groupsDesc: 'قسّمي الطلاب إلى مجموعات صغيرة. كل مجموعة تسمع مجموعتها فقط. شاشتك وسبورتك ورسائلك تصل إلى كل المجموعات.', presentBalloon: 'حاضر، بالون 🎈', presentCamera: 'حاضر، كاميرا 📷', noTapYet: 'لم يضغط بعد…', startChecks: 'بدء تسجيل الحضور', stopChecks: '🛑 إيقاف تسجيل الحضور', balloonTap: '🎈 الحضور — اضغط البالون الوردي في مربعك!', markedPresent: '✅ تم تسجيل حضورك. شكرًا!', chatTitleS: '💬 رسالة إلى المعلمة', chatTitleT: '💬 رسائل خاصة', sendBtn: 'إرسال', chatPh: 'اكتب رسالة خاصة…', groupWord: 'مجموعة', youAreIn: 'أنت في', withWord: 'مع', noSplit: 'لا تقسيم الآن — الجميع معًا.' },
+    id: { homeTitle: 'Kelas Langsung', homeSub: 'Satu tautan adalah seluruh kelas. Tanpa akun, tanpa pengaturan untuk siswa.', iAmTeacher: '👩‍🏫 Saya guru — mulai kelas', studentCodeLabel: 'Saya siswa — ketik kode kelas', joinClass: 'Masuk kelas', nameTitle: 'Selamat datang 👋', nameSub: 'Tulis nama Anda, lalu ketuk tombol hijau besar.', enterClass: 'Masuk kelas ✅', teacherScreen: 'Layar guru', teacherSays: 'Guru Anda berkata', boardLabel: '🤝 Papan kelas — nama Anda sebelum kata-kata Anda', answerLabel: '✍️ Tulis jawaban Anda di sini', answerPh: 'Ketik di sini… guru Anda langsung melihatnya', sayAsk: 'Katakan atau tanyakan (siswa melihatnya besar)', attTitle: '✅ Kehadiran — balon merah muda', participants: '👥 Peserta di kelas ini', answersLabel: 'Jawaban siswa — langsung', clearAnswers: 'Hapus semua jawaban', classLive: 'Kelas Anda sedang langsung 🎉', langLabel: '🌐 Bahasa kelas (untuk semua)', sendLink: 'Kirim tautan ini ke siswa Anda', myScreen: 'Layar saya (hanya Anda yang melihat pratinjau ini)', drawHint: 'Nyalakan gambar, pilih warna, dan tulis di layar bersama Anda — siswa melihatnya langsung.', groupsTitle: '🧩 Ruang terpisah (kelompok kecil)', groupsDesc: 'Bagi siswa ke kelompok kecil. Mereka hanya mendengar kelompoknya. Layar, papan, dan pesan Anda tetap sampai ke setiap kelompok.', presentBalloon: 'hadir, balon 🎈', presentCamera: 'hadir, kamera 📷', noTapYet: 'belum mengetuk…', startChecks: 'Mulai cek kehadiran', stopChecks: '🛑 Hentikan cek kehadiran', balloonTap: '🎈 Cek kehadiran — ketuk balon merah muda di kotak Anda!', markedPresent: '✅ Anda tercatat hadir. Terima kasih!', chatTitleS: '💬 Pesan untuk guru Anda', chatTitleT: '💬 Pesan pribadi', sendBtn: 'Kirim', chatPh: 'Tulis pesan pribadi…', groupWord: 'Kelompok', youAreIn: 'Anda di', withWord: 'dengan', noSplit: 'Tidak ada pemisahan sekarang — semua bersama.' },
+    vi: { homeTitle: 'Lớp học trực tiếp', homeSub: 'Một liên kết là cả lớp học. Không cần tài khoản, không cần cài đặt cho học sinh.', iAmTeacher: '👩‍🏫 Tôi là giáo viên — bắt đầu lớp', studentCodeLabel: 'Tôi là học sinh — nhập mã lớp', joinClass: 'Vào lớp', nameTitle: 'Chào mừng 👋', nameSub: 'Viết tên của bạn, rồi chạm nút xanh lớn.', enterClass: 'Vào lớp ✅', teacherScreen: 'Màn hình của giáo viên', teacherSays: 'Giáo viên của bạn nói', boardLabel: '🤝 Bảng lớp — tên của bạn trước lời của bạn', answerLabel: '✍️ Viết câu trả lời ở đây', answerPh: 'Gõ ở đây… giáo viên thấy ngay', sayAsk: 'Nói hoặc hỏi (học sinh thấy chữ lớn)', attTitle: '✅ Điểm danh — bóng hồng', participants: '👥 Người tham gia lớp này', answersLabel: 'Câu trả lời của học sinh — trực tiếp', clearAnswers: 'Xóa mọi câu trả lời', classLive: 'Lớp của bạn đang trực tiếp 🎉', langLabel: '🌐 Ngôn ngữ lớp (cho mọi người)', sendLink: 'Gửi liên kết này cho học sinh', myScreen: 'Màn hình của tôi (chỉ bạn thấy bản xem này)', drawHint: 'Bật vẽ, chọn màu và viết trên màn hình chia sẻ — học sinh thấy trực tiếp.', groupsTitle: '🧩 Phòng tách (nhóm nhỏ)', groupsDesc: 'Chia học sinh thành nhóm nhỏ. Họ chỉ nghe nhóm của mình. Màn hình, bảng và tin nhắn của bạn vẫn đến mọi nhóm.', presentBalloon: 'có mặt, bóng 🎈', presentCamera: 'có mặt, máy ảnh 📷', noTapYet: 'chưa chạm…', startChecks: 'Bắt đầu điểm danh', stopChecks: '🛑 Dừng điểm danh', balloonTap: '🎈 Điểm danh — chạm bóng hồng trong ô của bạn!', markedPresent: '✅ Bạn đã được ghi có mặt. Cảm ơn!', chatTitleS: '💬 Nhắn cho giáo viên', chatTitleT: '💬 Tin nhắn riêng', sendBtn: 'Gửi', chatPh: 'Viết tin nhắn riêng…', groupWord: 'Nhóm', youAreIn: 'Bạn ở', withWord: 'với', noSplit: 'Chưa tách phòng — mọi người cùng nhau.' },
+    zh: { homeTitle: '直播课堂', homeSub: '一个链接就是整个教室。学生无需账户，无需设置。', iAmTeacher: '👩‍🏫 我是老师 — 开始上课', studentCodeLabel: '我是学生 — 输入课堂代码', joinClass: '进入课堂', nameTitle: '欢迎 👋', nameSub: '写下你的名字，然后点击大的绿色按钮。', enterClass: '进入课堂 ✅', teacherScreen: '老师的屏幕', teacherSays: '老师说', boardLabel: '🤝 班级白板 — 你的名字在你的话前面', answerLabel: '✍️ 在这里写你的答案', answerPh: '在这里输入…老师马上就能看到', sayAsk: '说或问（学生看到大字）', attTitle: '✅ 考勤 — 粉色气球', participants: '👥 本课参与者', answersLabel: '学生答案 — 实时', clearAnswers: '清除所有答案', classLive: '你的课堂正在直播 🎉', langLabel: '🌐 课堂语言（所有人）', sendLink: '把这个链接发给学生', myScreen: '我的屏幕（只有你能看到此预览）', drawHint: '打开绘画，选择颜色，在共享屏幕上书写 — 学生实时看到。', groupsTitle: '🧩 分组房间（小組）', groupsDesc: '把学生分成小組。他们只能听到自己小組的声音。你的屏幕、白板和消息仍会到达每个小組。', presentBalloon: '出席，气球 🎈', presentCamera: '出席，摄像头 📷', noTapYet: '还没点…', startChecks: '开始考勤', stopChecks: '🛑 停止考勤', balloonTap: '🎈 考勤 — 点击你方框里的粉色气球！', markedPresent: '✅ 你已被记为出席。谢谢！', chatTitleS: '💬 给老师发消息', chatTitleT: '💬 私人消息', sendBtn: '发送', chatPh: '写一条私人消息…', groupWord: '组', youAreIn: '你在', withWord: '和', noSplit: '现在没有分组 — 大家在一起。' }
+  };
+  let curLang = 'en';
+  function t(key) { return (STRINGS[curLang] && STRINGS[curLang][key]) || STRINGS.en[key] || key; }
+  function applyLanguage(lang) {
+    curLang = STRINGS[lang] ? lang : 'en';
+    document.documentElement.lang = curLang;
+    document.documentElement.dir = curLang === 'ar' ? 'rtl' : 'ltr';
+    document.querySelectorAll('[data-i18n]').forEach((el) => {
+      const k = el.getAttribute('data-i18n');
+      if (STRINGS[curLang][k]) el.textContent = STRINGS[curLang][k];
+    });
+    document.querySelectorAll('[data-i18n-ph]').forEach((el) => {
+      const k = el.getAttribute('data-i18n-ph');
+      if (STRINGS[curLang][k]) el.placeholder = STRINGS[curLang][k];
+    });
+    const sel = $('langSel'); if (sel) sel.value = curLang;
+    paintAttBtn();
+    $('chatSend').textContent = t('sendBtn');
+    $('chatInput').placeholder = t('chatPh');
+    $('chatTitle').textContent = role === 'teacher' ? t('chatTitleT') : t('chatTitleS');
+    paintGroupBanner();
+  }
+  socket.on('lang', ({ lang }) => applyLanguage(lang));
+  if ($('langSel')) $('langSel').addEventListener('change', () => {
+    const v = $('langSel').value;
+    applyLanguage(v);
+    socket.emit('set-lang', { lang: v });
+  });
+
+  // ---------- Hearts ----------
+  function sendHeart() { socket.emit('react'); }
+  $('heartBtnS').addEventListener('click', sendHeart);
+  $('heartBtnT').addEventListener('click', sendHeart);
+  socket.on('react', ({ name }) => {
+    const d = document.createElement('div');
+    d.className = 'float-heart';
+    d.textContent = '❤️ ' + name;
+    $('reactions').appendChild(d);
+    setTimeout(() => d.remove(), 3300);
+  });
+
+  // ---------- Private chat (panel on the RIGHT side) ----------
+  const chatThreads = new Map();
+  let chatActiveThread = null;
+  let chatOpen = false;
+  let chatUnread = 0;
+  function chatBadgePaint() {
+    ['chatBadgeS', 'chatBadgeT'].forEach((id) => {
+      const b = $(id);
+      if (!b) return;
+      b.textContent = chatUnread;
+      b.classList.toggle('hidden', chatUnread === 0);
+    });
+  }
+  function renderChatTabs() {
+    const tabs = $('chatTabs');
+    if (role !== 'teacher') { tabs.classList.add('hidden'); return; }
+    tabs.classList.remove('hidden');
+    if (!chatActiveThread) {
+      const first = [...chatThreads.keys()][0] || [...peerNames.keys()][0];
+      if (first) chatActiveThread = first;
+    }
+    tabs.innerHTML = '';
+    const ids = new Set([...peerNames.keys(), ...chatThreads.keys()]);
+    ids.forEach((id) => {
+      if (id === socket.id) return;
+      const b = document.createElement('button');
+      b.textContent = peerNames.get(id) || 'Student';
+      if (id === chatActiveThread) b.className = 'active';
+      b.addEventListener('click', () => { chatActiveThread = id; renderChat(); });
+      tabs.appendChild(b);
+    });
+  }
+  function renderChatMsgs() {
+    const box = $('chatMsgs');
+    box.innerHTML = '';
+    const key = role === 'teacher' ? chatActiveThread : socket.id;
+    const msgs = (key && chatThreads.get(key)) || [];
+    msgs.forEach((m) => {
+      const d = document.createElement('div');
+      d.className = 'chat-msg' + (m.from === socket.id ? ' mine' : '');
+      const cn = document.createElement('div'); cn.className = 'cn'; cn.textContent = m.name;
+      const tx = document.createElement('div'); tx.textContent = m.text;
+      const ct = document.createElement('div'); ct.className = 'ct'; ct.textContent = m.at || '';
+      d.appendChild(cn); d.appendChild(tx); d.appendChild(ct);
+      box.appendChild(d);
+    });
+    box.scrollTop = box.scrollHeight;
+  }
+  function renderChat() {
+    renderChatTabs();
+    renderChatMsgs();
+    $('chatTitle').textContent = role === 'teacher' ? t('chatTitleT') : t('chatTitleS');
+  }
+  function setChatOpen(open) {
+    chatOpen = open;
+    $('chatPanel').classList.toggle('open', open);
+    if (open) { chatUnread = 0; chatBadgePaint(); renderChat(); }
+  }
+  $('chatBtnS').addEventListener('click', () => setChatOpen(true));
+  $('chatBtnT').addEventListener('click', () => setChatOpen(true));
+  $('chatClose').addEventListener('click', () => setChatOpen(false));
+  function sendChat() {
+    const v = $('chatInput').value.trim();
+    if (!v) return;
+    if (role === 'teacher' && !chatActiveThread) { alert('Tap a student name first.'); return; }
+    socket.emit('chat', { to: role === 'teacher' ? chatActiveThread : undefined, text: v });
+    $('chatInput').value = '';
+  }
+  $('chatSend').addEventListener('click', sendChat);
+  $('chatInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChat(); });
+  socket.on('chat', ({ thread, msg }) => {
+    if (!chatThreads.has(thread)) chatThreads.set(thread, []);
+    chatThreads.get(thread).push(msg);
+    if (!chatOpen) { chatUnread += 1; chatBadgePaint(); }
+    if (role === 'teacher' && !chatActiveThread) chatActiveThread = thread;
+    if (chatOpen) renderChat();
+  });
+
+  // ---------- Balloon NOW ----------
+  $('attNowBtn').addEventListener('click', () => {
+    socket.emit('att-now');
+    $('teacherStatus').textContent = '🎈 Balloon sent to the class!';
+  });
+
+  // ---------- Lesson recording (teacher) ----------
+  let recorder = null, recChunks = [], recTimer = null, recStart = 0;
+  function recMime() {
+    const opts = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'];
+    return opts.find((o) => window.MediaRecorder && MediaRecorder.isTypeSupported(o)) || '';
+  }
+  $('recBtn').addEventListener('click', () => {
+    if (recorder) { recorder.stop(); return; }
+    const tracks = [];
+    const v = (screenStream && screenStream.getVideoTracks()[0]) || (camStream && camStream.getVideoTracks()[0]);
+    if (v) tracks.push(v);
+    if (screenStream) screenStream.getAudioTracks().forEach((tr) => tracks.push(tr));
+    if (micStream) micStream.getAudioTracks().forEach((tr) => tracks.push(tr));
+    if (!v) { $('teacherStatus').textContent = 'Turn on your screen share or camera first — then record.'; return; }
+    const mime = recMime();
+    try {
+      recorder = new MediaRecorder(new MediaStream(tracks), mime ? { mimeType: mime } : undefined);
+    } catch (e) { recorder = null; $('teacherStatus').textContent = 'Recording is not supported in this browser.'; return; }
+    recChunks = [];
+    recorder.ondataavailable = (e) => { if (e.data && e.data.size) recChunks.push(e.data); };
+    recorder.onstop = () => {
+      clearInterval(recTimer);
+      const blob = new Blob(recChunks, { type: recorder.mimeType || 'video/webm' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'lesson-recording-' + new Date().toISOString().slice(0, 10) + '.webm';
+      a.click();
+      URL.revokeObjectURL(a.href);
+      recorder = null;
+      $('recBtn').textContent = '⏺ Record lesson';
+      $('recBtn').classList.remove('red');
+      $('teacherStatus').textContent = '✅ Recording saved to your computer.';
+    };
+    recorder.start(1000);
+    recStart = Date.now();
+    $('recBtn').classList.add('red');
+    recTimer = setInterval(() => {
+      const s = Math.floor((Date.now() - recStart) / 1000);
+      $('recBtn').textContent = '⏺ Recording ' + String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0') + ' — tap to stop & save';
+    }, 500);
+    $('teacherStatus').textContent = 'Recording your screen and your voice…';
+  });
+
+  // ---------- Drawing on the shared screen ----------
+  let drawOn = false, drawColor = '#ef4444', drawCur = null, myStrokes = [];
+  function fitCanvas(cv, video) {
+    if (!cv || !video) return;
+    const w = video.clientWidth || 640, h = video.clientHeight || 360;
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; redrawStrokes(); }
+  }
+  function drawSegOn(cv, color, pts) {
+    if (!cv || !pts || pts.length < 2) return;
+    const ctx = cv.getContext('2d');
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(3, cv.width * 0.006);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    pts.forEach(([x, y], i) => {
+      const px = x * cv.width, py = y * cv.height;
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+  }
+  function redrawStrokes() {
+    [$('drawCanvasT'), $('drawCanvasS')].forEach((cv) => {
+      if (!cv) return;
+      cv.getContext('2d').clearRect(0, 0, cv.width, cv.height);
+      myStrokes.forEach((s) => drawSegOn(cv, s.color, s.pts));
+    });
+  }
+  function activeDrawCanvas() { return role === 'teacher' ? $('drawCanvasT') : $('drawCanvasS'); }
+  socket.on('draw-seg', (seg) => {
+    const cv = activeDrawCanvas();
+    fitCanvas(cv, role === 'teacher' ? $('teacherPreview') : $('screenVideo'));
+    drawSegOn(cv, seg.color, seg.pts);
+  });
+  socket.on('draw-clear', () => { myStrokes = []; redrawStrokes(); });
+  const drawCv = $('drawCanvasT');
+  function normPt(e) {
+    const r = drawCv.getBoundingClientRect();
+    return [Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))];
+  }
+  const emitSeg = throttle((color, pts) => socket.emit('draw-seg', { color, pts }), 60);
+  drawCv.addEventListener('pointerdown', (e) => {
+    if (!drawOn) return;
+    fitCanvas(drawCv, $('teacherPreview'));
+    drawCur = { color: drawColor, pts: [normPt(e)] };
+    try { drawCv.setPointerCapture(e.pointerId); } catch (err) {}
+  });
+  drawCv.addEventListener('pointermove', (e) => {
+    if (!drawOn || !drawCur) return;
+    const p = normPt(e);
+    const prev = drawCur.pts[drawCur.pts.length - 1];
+    drawCur.pts.push(p);
+    drawSegOn(drawCv, drawCur.color, [prev, p]);
+    emitSeg(drawCur.color, [prev, p]);
+  });
+  function endStroke() {
+    if (!drawCur) return;
+    if (drawCur.pts.length > 1) { myStrokes.push(drawCur); socket.emit('draw-stroke', drawCur); }
+    drawCur = null;
+  }
+  drawCv.addEventListener('pointerup', endStroke);
+  drawCv.addEventListener('pointercancel', endStroke);
+  $('drawBtn').addEventListener('click', () => {
+    drawOn = !drawOn;
+    drawCv.classList.toggle('drawing', drawOn);
+    $('drawBtn').textContent = drawOn ? '✏️ Draw on my screen: ON' : '✏️ Draw on my screen: OFF';
+    $('drawBtn').classList.toggle('on', drawOn);
+    fitCanvas(drawCv, $('teacherPreview'));
+  });
+  document.querySelectorAll('.cdot').forEach((c) => c.addEventListener('click', () => {
+    drawColor = c.dataset.color;
+    document.querySelectorAll('.cdot').forEach((x) => x.classList.toggle('sel', x === c));
+  }));
+  $('drawClearBtn').addEventListener('click', () => { myStrokes = []; redrawStrokes(); socket.emit('draw-clear'); });
+  window.addEventListener('resize', () => {
+    fitCanvas($('drawCanvasT'), $('teacherPreview'));
+    fitCanvas($('drawCanvasS'), $('screenVideo'));
+    redrawStrokes();
+  });
+
+  // ---------- Split rooms ----------
+  const peerRoles = new Map();
+  let groupsState = { active: false, mine: null, groups: [] };
+  function teacherId() {
+    for (const [id, r] of peerRoles.entries()) if (r === 'teacher') return id;
+    return null;
+  }
+  function wantedIds() {
+    if (role === 'teacher' || !groupsState.active) return null;
+    const set = new Set();
+    const tid = teacherId(); if (tid) set.add(tid);
+    const g = groupsState.groups.find((x) => x.id === groupsState.mine);
+    if (g) g.members.forEach((m) => { if (m.id !== socket.id) set.add(m.id); });
+    return set;
+  }
+  function peerAllowed(id) { const w = wantedIds(); return !w || w.has(id); }
+  function paintGroupBanner() {
+    const b = $('groupBanner');
+    if (!b || role === 'teacher') return;
+    if (!groupsState.active || !groupsState.mine) { b.classList.add('hidden'); return; }
+    const g = groupsState.groups.find((x) => x.id === groupsState.mine);
+    const mates = g ? g.members.filter((m) => m.id !== socket.id).map((m) => m.name) : [];
+    b.textContent = '🧩 ' + t('youAreIn') + ' ' + t('groupWord') + ' ' + groupsState.mine.replace('G', '')
+      + (mates.length ? ' — ' + t('withWord') + ' ' + mates.join(', ') : '');
+    b.classList.remove('hidden');
+  }
+  function applyGroups(payload) {
+    groupsState = payload || { active: false, mine: null, groups: [] };
+    peers.forEach((state, id) => {
+      if (!peerAllowed(id)) {
+        try { state.pc.close(); } catch (e) {}
+        peers.delete(id);
+        const a = document.getElementById('audio-' + id);
+        if (a) a.remove();
+        clearTileVideo(id);
+      }
+    });
+    peerNames.forEach((name, id) => {
+      if (peerAllowed(id)) { ensureTile(id, name); makePeer(id); }
+      else removeTile(id);
+    });
+    paintGroupBanner();
+    if (role === 'teacher') {
+      const box = $('groupsList');
+      if (!groupsState.active) { box.innerHTML = '<p class="sub">' + t('noSplit') + '</p>'; return; }
+      box.innerHTML = '';
+      groupsState.groups.forEach((g) => {
+        const d = document.createElement('div');
+        d.className = 'att-row';
+        d.textContent = '🧩 ' + t('groupWord') + ' ' + g.id.replace('G', '') + ': ' + g.members.map((m) => m.name).join(', ');
+        box.appendChild(d);
+      });
+    }
+  }
+  socket.on('groups', applyGroups);
+  document.querySelectorAll('.grp-split').forEach((b) => b.addEventListener('click', () => socket.emit('groups-split', { size: parseInt(b.dataset.size, 10) })));
+  $('groupsEndBtn').addEventListener('click', () => socket.emit('groups-end'));
 
   $('clearBtn').addEventListener('click', () => {
     socket.emit('clear-answers');
